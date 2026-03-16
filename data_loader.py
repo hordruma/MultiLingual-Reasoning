@@ -1,8 +1,9 @@
 """
 LegalBench Data Loader
 ======================
-Downloads LegalBench tasks from HuggingFace and formats them for the experiment.
-Falls back to a local cache after first download.
+Downloads LegalBench tasks from HuggingFace (preferred) or GitHub (fallback)
+and formats them for the experiment.  Falls back to a local cache after first
+download.
 """
 
 import json
@@ -19,8 +20,17 @@ try:
 except ImportError:
     HF_AVAILABLE = False
 
+try:
+    import httpx
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
+
 
 CACHE_DIR = Path("data/legalbench_cache")
+GITHUB_RAW_BASE = (
+    "https://raw.githubusercontent.com/HazyResearch/legalbench/main/tasks"
+)
 
 
 @dataclass
@@ -54,43 +64,66 @@ def _identify_fields(sample: dict, task: str) -> tuple:
     return input_fields, output_field
 
 
+def _download_from_github(task_name: str) -> Optional[List[dict]]:
+    """Download a task's data directly from the LegalBench GitHub repo."""
+    if not HTTPX_AVAILABLE:
+        return None
+
+    for split in ["test", "train"]:
+        url = f"{GITHUB_RAW_BASE}/{task_name}/{split}.tsv"
+        try:
+            r = httpx.get(url, follow_redirects=True, timeout=30)
+            if r.status_code == 200 and r.text.strip():
+                reader = csv.DictReader(io.StringIO(r.text), delimiter="\t")
+                rows = [dict(row) for row in reader]
+                if rows:
+                    print(f"  Downloaded {len(rows)} samples from GitHub ({split}.tsv)")
+                    return rows
+        except Exception:
+            continue
+    return None
+
+
 def load_task(task_name: str, max_samples: int = 200, split: str = "test") -> List[LegalBenchSample]:
     """
-    Load a LegalBench task. Tries HuggingFace first, then local cache.
+    Load a LegalBench task. Checks local cache first, then tries HuggingFace,
+    then falls back to GitHub raw download.
     Returns up to max_samples samples.
     """
-    cache_path = CACHE_DIR / task_name / f"{split}.jsonl"
+    # Try cache first (check both requested split and train as fallback)
+    for try_split in [split, "train"]:
+        cache_path = CACHE_DIR / task_name / f"{try_split}.jsonl"
+        if cache_path.exists():
+            return _load_from_cache(cache_path, task_name, max_samples)
 
-    # Try cache first
-    if cache_path.exists():
+    # Try HuggingFace
+    if HF_AVAILABLE:
+        print(f"  Downloading {task_name} from HuggingFace...")
+        for try_split in [split, "train"]:
+            try:
+                ds = load_dataset("nguha/legalbench", task_name, split=try_split)
+                cache_path = CACHE_DIR / task_name / f"{try_split}.jsonl"
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(cache_path, "w") as f:
+                    for item in ds:
+                        f.write(json.dumps(dict(item), ensure_ascii=False) + "\n")
+                return _load_from_cache(cache_path, task_name, max_samples)
+            except Exception as e:
+                print(f"  ⚠ HuggingFace {task_name}/{try_split}: {e}")
+
+    # Fallback: download from GitHub
+    print(f"  Trying GitHub fallback for {task_name}...")
+    rows = _download_from_github(task_name)
+    if rows:
+        cache_path = CACHE_DIR / task_name / "train.jsonl"
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(cache_path, "w") as f:
+            for row in rows:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
         return _load_from_cache(cache_path, task_name, max_samples)
 
-    # Download from HuggingFace
-    if not HF_AVAILABLE:
-        raise RuntimeError(
-            f"Task {task_name} not cached and `datasets` library not installed. "
-            f"Run: pip install datasets --break-system-packages"
-        )
-
-    print(f"  Downloading {task_name} from HuggingFace...")
-    try:
-        ds = load_dataset("nguha/legalbench", task_name, split=split, trust_remote_code=True)
-    except Exception as e:
-        print(f"  ⚠ Could not load {task_name}/{split}: {e}")
-        # Try loading train split as fallback
-        try:
-            ds = load_dataset("nguha/legalbench", task_name, split="train", trust_remote_code=True)
-        except Exception as e2:
-            print(f"  ✗ Failed to load {task_name}: {e2}")
-            return []
-
-    # Cache locally
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(cache_path, "w") as f:
-        for item in ds:
-            f.write(json.dumps(dict(item), ensure_ascii=False) + "\n")
-
-    return _load_from_cache(cache_path, task_name, max_samples)
+    print(f"  ✗ Failed to load {task_name} from any source")
+    return []
 
 
 def _load_from_cache(cache_path: Path, task_name: str, max_samples: int) -> List[LegalBenchSample]:
