@@ -184,6 +184,27 @@ MODELS = {
         "price_in": 0.0, "price_out": 0.0,
     },
 
+    "tokenrouter": {
+        # TokenRouter (OpenAI-compatible aggregator). GLM-5.3 is free there at
+        # the time of writing. The exact model id differs per router; run
+        #   python run_experiment.py --remote-models tokenrouter
+        # to list what the key can see, then set TOKENROUTER_MODEL if needed.
+        # GLM-5.3 is a thinking model whose thinking cannot be disabled;
+        # reasoning_effort low keeps the hidden part short, and whatever
+        # comes back is stored in hidden_reasoning.
+        "provider": "openai_compat",
+        "model_id": "z-ai/glm-5.3-free",
+        "model_id_env": "TOKENROUTER_MODEL",
+        "display": "GLM-5.3 free via TokenRouter (override with TOKENROUTER_MODEL)",
+        "origin_country": "China",
+        "api_key_env": "TOKENROUTER_API_KEY",
+        "base_url_env": "TOKENROUTER_BASE_URL",
+        "base_url": "https://api.tokenrouter.com/v1",
+        "request_overrides": {"reasoning_effort": "low"},
+        "hidden_reasoning": "cannot_disable",
+        "price_in": 0.0, "price_out": 0.0,   # free tier; set real prices if that changes
+    },
+
     # ── Local inference (no key, no cost) ───────────────────────────────
     # Pull a model first, e.g.  ollama pull qwen3.5:9b   (8 GB VRAM) or
     # qwen3.6:27b (~17 GB) / gemma4:12b.  Run with --concurrency 1 or 2.

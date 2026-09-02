@@ -49,9 +49,13 @@ Every condition asks for the final answer in English on a line of the form
 | glm-5.3-flash | glm-5.3-flash | Z.ai | `ZAI_API_KEY` | cannot be disabled (set to low) | 0.15 / 0.50 |
 | minimax-m3 | MiniMax-M3 | MiniMax (intl) | `MINIMAX_API_KEY` | off | 0.30 / 1.20 |
 
-Opt-in: `claude-haiku` (Haiku 4.5, 1.00 / 5.00), `claude-sonnet` (Sonnet 5),
+Opt-in: `tokenrouter` (GLM-5.3 free via TokenRouter, id `z-ai/glm-5.3-free`;
+thinking cannot be disabled, so its hidden reasoning is recorded),
+`claude-haiku` (Haiku 4.5, 1.00 / 5.00), `claude-sonnet` (Sonnet 5),
 `gemini-2.5-flash-lite` (thinking off by default, 0.10 / 0.40),
 `mistral-small`, and `openrouter` (any OpenRouter model id through one key).
+For any aggregator, `python run_experiment.py --remote-models <key>` lists the
+model ids your key can see.
 
 Prices are from public price lists in early September 2026 and only feed
 `--estimate`; check them before a paid run. Model ids are verified by

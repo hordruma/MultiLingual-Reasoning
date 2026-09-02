@@ -288,7 +288,7 @@ def paired_condition_test(rows: List[dict], cond_a: str, cond_b: str) -> List[di
 ORIGIN_HYPOTHESES = [
     # (model, language) pairs where training-data origin might help.
     ("deepseek-v4-flash", "mandarin"), ("qwen3.7-flash", "mandarin"),
-    ("glm-5.3-flash", "mandarin"), ("minimax-m3", "mandarin"),
+    ("glm-5.3-flash", "mandarin"), ("minimax-m3", "mandarin"), ("tokenrouter", "mandarin"),
     ("mistral-small", "german"),
 ]
 

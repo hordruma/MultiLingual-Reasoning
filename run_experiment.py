@@ -455,6 +455,34 @@ async def run_smoke_test(model_keys: List[str]) -> bool:
     return ok
 
 
+async def list_remote_models(model_key: str):
+    """GET {base_url}/models with the model's key and print the ids the key can see."""
+    import httpx
+    cfg = MODELS[model_key]
+    if cfg["provider"] != "openai_compat":
+        sys.exit(f"{model_key} is not an OpenAI-compatible provider")
+    try:
+        resolved = resolve_model(cfg)
+    except ConfigError as e:
+        sys.exit(f"✗ {e}")
+    url = f"{resolved['base_url']}/models"
+    async with httpx.AsyncClient(timeout=60) as client:
+        r = await client.get(url, headers={"Authorization": f"Bearer {resolved['api_key']}"})
+    if r.status_code != 200:
+        sys.exit(f"✗ {url} → HTTP {r.status_code}: {r.text[:300]}")
+    data = r.json()
+    items = data.get("data", data if isinstance(data, list) else [])
+    print(f"\n{len(items)} models at {url}  (current default for {model_key}: {resolved['model_id']})\n")
+    for m in sorted(items, key=lambda x: str(x.get("id", ""))):
+        mid = m.get("id", "?")
+        pricing = m.get("pricing") or {}
+        price = ""
+        if pricing:
+            price = f"  in={pricing.get('prompt', pricing.get('input', '?'))} out={pricing.get('completion', pricing.get('output', '?'))}"
+        print(f"  {mid}{price}")
+    print(f"\nPick one with {cfg.get('model_id_env', 'the model_id in config.py')}=<id>")
+
+
 def list_everything():
     print("\nMODELS (default set marked *; thinking = hidden-reasoning policy; env var = API key, * = optional):")
     for k, v in MODELS.items():
@@ -483,6 +511,8 @@ def main():
         pass
     parser = argparse.ArgumentParser(description="LegalBench CoT Language Experiment")
     parser.add_argument("--list", action="store_true", help="List models, conditions and tasks")
+    parser.add_argument("--remote-models", type=str, default=None, metavar="MODEL_KEY",
+                        help="Query an OpenAI-compatible provider's /models endpoint (e.g. tokenrouter, ollama)")
     parser.add_argument("--smoke-test", action="store_true", help="One tiny call per model, then exit")
     parser.add_argument("--dry-run", action="store_true", help="Show matrix without API calls")
     parser.add_argument("--estimate", action="store_true", help="Load data and print a rough cost estimate")
@@ -499,6 +529,11 @@ def main():
 
     if args.list:
         list_everything()
+        return
+    if args.remote_models:
+        if args.remote_models not in MODELS:
+            sys.exit(f"Unknown model: {args.remote_models}  (see --list)")
+        asyncio.run(list_remote_models(args.remote_models))
         return
 
     if args.models == "all":
