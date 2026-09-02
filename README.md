@@ -6,18 +6,19 @@ conditions × models × LegalBench tasks and analyses the results.
 
 State of the project: **prepared, not yet run**. The code has been audited
 and reworked (see [ASSESSMENT.md](ASSESSMENT.md)), tested offline, and is
-set up to run against six cheap cloud models. No real results exist yet.
+set up to run against six cheap cloud models or a local model. No real
+results exist yet.
 
 ## Design
 
 | Factor | Levels |
 |---|---|
 | Reasoning condition | **19**: 14 natural languages (9 families) + formal logic, pseudocode, emergent notation + wildcard + no-CoT control |
-| Models | default 6 cheap models (below); any entry in `config.MODELS` |
+| Models | default 6 cheap cloud models (below); any entry in `config.MODELS`, including local ones |
 | Tasks | 9 closed-label LegalBench tasks (7 Yes/No, one 5-class, one 9-class) |
 | Samples | up to 200 per task, seeded random subset, identical across cells |
 | Runs | `--runs N` (config default 3; use 1 for a first pass) |
-| Decoding | temperature 0, 2048 output tokens |
+| Decoding | temperature 0 where the API allows it, 4096 output tokens, hidden "thinking" off where the API allows it |
 
 ### Conditions
 
@@ -37,23 +38,49 @@ set up to run against six cheap cloud models. No real results exist yet.
 Every condition asks for the final answer in English on a line of the form
 `ANSWER: <label>`.
 
-### Default models (cheap tier)
+### Default models (cheap tier, September 2026)
 
-| Key | Model id | Route | Env var |
-|---|---|---|---|
-| gpt-4o-mini | gpt-4o-mini | OpenAI | `OPENAI_API_KEY` |
-| claude-haiku | claude-haiku-4-5-20251001 | Anthropic | `ANTHROPIC_API_KEY` |
-| gemini-flash-lite | gemini-2.5-flash-lite | Google OpenAI-compatible endpoint | `GEMINI_API_KEY` |
-| deepseek-chat | deepseek-chat | DeepSeek | `DEEPSEEK_API_KEY` |
-| mistral-small | mistral-small-latest | Mistral | `MISTRAL_API_KEY` |
-| qwen-plus | qwen-plus | Alibaba DashScope (intl) | `QWEN_API_KEY` |
+| Key | Model id | Route | Env var | Thinking | $/1M in / out |
+|---|---|---|---|---|---|
+| gpt-5.6-luna | gpt-5.6-luna | OpenAI | `OPENAI_API_KEY` | off (`reasoning_effort: none`) | 0.20 / 1.20 |
+| gemini-3.1-flash-lite | gemini-3.1-flash-lite | Google OpenAI-compatible layer | `GEMINI_API_KEY` | lowest setting only | 0.25 / 1.50 |
+| deepseek-v4-flash | deepseek-v4-flash | DeepSeek | `DEEPSEEK_API_KEY` | off | 0.14 / 0.28 |
+| qwen3.7-flash | qwen3.7-flash | Alibaba DashScope (intl) | `QWEN_API_KEY` | off | 0.03 / 0.13 |
+| glm-5.3-flash | glm-5.3-flash | Z.ai | `ZAI_API_KEY` | cannot be disabled (set to low) | 0.15 / 0.50 |
+| minimax-m3 | MiniMax-M3 | MiniMax (intl) | `MINIMAX_API_KEY` | off | 0.30 / 1.20 |
 
-Frontier equivalents (`claude-sonnet`, `gpt-4o`, `gemini-2.5-flash`,
-`mistral-large`, `qwen-max`) stay in `config.py` and can be requested with
-`--models`. `openrouter` routes any OpenRouter model id through one key.
-Model ids and the prices used by `--estimate` are placeholders; check them
-against the providers before a paid run. Any OpenAI-compatible host (Azure
-AI Foundry, vLLM, Ollama) works by pointing a model's `*_BASE_URL` at it.
+Opt-in: `claude-haiku` (Haiku 4.5, 1.00 / 5.00), `claude-sonnet` (Sonnet 5),
+`gemini-2.5-flash-lite` (thinking off by default, 0.10 / 0.40),
+`mistral-small`, and `openrouter` (any OpenRouter model id through one key).
+
+Prices are from public price lists in early September 2026 and only feed
+`--estimate`; check them before a paid run. Model ids are verified by
+`--smoke-test`, which also reports whether a provider returned hidden
+reasoning despite the toggle.
+
+**Why the thinking column matters.** The experiment manipulates the language
+of the *visible* chain of thought. A model that first thinks in a hidden
+channel and then writes the visible reasoning is not reasoning in the
+requested language. Thinking is therefore switched off wherever the API
+allows it. Where it cannot be (GLM-5.3 Flash; Gemini 3.1 can only be turned
+down), the hidden reasoning is stored per sample and its rate is reported so
+those models can be analysed separately or excluded.
+
+### Local models
+
+Any OpenAI-compatible local server works with no key and no cost:
+
+```bash
+ollama pull qwen3.5:9b            # ~8 GB VRAM; qwen3.6:27b needs ~17 GB; gemma4:12b also works
+python run_experiment.py --models ollama --concurrency 1 --pilot --runs 1 --max-samples 30
+# or: OLLAMA_MODEL=qwen3.6:27b python run_experiment.py --models ollama ...
+# LM Studio: start its server, load a model, set LMSTUDIO_MODEL, use --models lmstudio
+```
+
+Ollama's `/v1` endpoint honours `reasoning_effort: none` for Qwen 3.x. Gemma 4
+on that endpoint returns its text in the reasoning field; the adapter
+promotes it to the visible answer. Small local models will need more of the
+lenient answer mapping, so watch the `no-mark` and `off-lbl` columns.
 
 ### Tasks
 
@@ -72,7 +99,7 @@ AI Foundry, vLLM, Ollama) works by pointing a model's `*_BASE_URL` at it.
 Each task is presented with its official LegalBench `base_prompt.txt`
 (definition + few-shot examples) and the allowed label list. Only the
 `text` field is shown to the model; metadata columns that leak the answer
-are excluded.
+are excluded. Test sizes are from the LegalBench paper and approximate.
 
 ## Setup
 
@@ -80,7 +107,7 @@ are excluded.
 python -m venv .venv && source .venv/bin/activate   # or --break-system-packages
 pip install -r requirements.txt
 cp .env.template .env      # fill in the keys for the models you will use
-python -m pytest -q        # 25 offline tests, no network needed
+python -m pytest -q        # 30 offline tests, no network needed
 ```
 
 Data comes from two places on first use and is cached under `data/`:
@@ -92,9 +119,9 @@ hand and where to put it.
 ## Running
 
 ```bash
-python run_experiment.py --list                     # models, conditions, tasks, env vars
+python run_experiment.py --list                     # models, thinking policy, env vars, tasks
 python run_experiment.py --smoke-test               # one tiny call per default model
-python run_experiment.py --smoke-test --models gpt-4o-mini,deepseek-chat
+python run_experiment.py --smoke-test --models gpt-5.6-luna,deepseek-v4-flash
 python run_experiment.py --estimate --runs 1        # downloads data, prints a rough cost table
 python run_experiment.py --dry-run --pilot          # show the matrix, no calls
 
@@ -102,7 +129,7 @@ python run_experiment.py --dry-run --pilot          # show the matrix, no calls
 python run_experiment.py --pilot --runs 1 --max-samples 50
 
 # Two models, three conditions, full samples
-python run_experiment.py --models gpt-4o-mini,deepseek-chat --conditions english,mandarin,wildcard --runs 1
+python run_experiment.py --models gpt-5.6-luna,deepseek-v4-flash --conditions english,mandarin,wildcard --runs 1
 
 # Everything for the default models
 python run_experiment.py --runs 1
@@ -115,7 +142,17 @@ Results are appended per sample to `results/<model>__<condition>__run<N>.jsonl`.
 Rerunning the same command resumes: completed samples are skipped, errored
 ones are retried. `--fresh` discards a cell's file first. `--concurrency`
 (default 5) is the number of in-flight requests; lower it if a provider
-rate-limits you.
+rate-limits you, and use 1 or 2 for local models.
+
+Recommended order for a real run:
+
+1. `--smoke-test` until every model you want is green. Fix ids or keys in
+   `.env` / `config.py` if a provider has renamed something.
+2. `--estimate --runs 1` to see the sample count per task and the cost.
+3. `--pilot --runs 1 --max-samples 50`, then `python analyze.py`. Look at
+   the compliance table: high `no-mark`, `off-lbl`, `trunc` or `hidden`
+   rates for a model mean its numbers need care before the full run.
+4. Full run with `--runs 1`; add runs later if the variance matters.
 
 ## Analysis
 
@@ -127,9 +164,10 @@ jupyter lab legalbench_analysis.ipynb
 The report prints, in order: majority-class baseline per task, condition /
 model / family rankings, a compliance table per model × condition (share of
 letters in the expected script, missing `ANSWER:` marker, prediction outside
-the label set, API errors, truncation), exact McNemar paired tests of
-wildcard / no_cot / mandarin / pseudocode against English on identical
-samples, a within-model origin-advantage check, and token use.
+the label set, API errors, truncation, hidden reasoning returned), exact
+McNemar paired tests of wildcard / no_cot / mandarin / pseudocode against
+English on identical samples, a within-model origin-advantage check, and
+token use.
 
 The notebook reads the same JSONL files. It stops if `results/` is empty; it
 does not generate placeholder data.
@@ -139,7 +177,7 @@ does not generate placeholder data.
 ```
 results/
 ├── experiment_summary.json     # per-cell summaries incl. per-task accuracy, errors, truncation
-├── <model>__<condition>__run<N>.jsonl   # one record per sample with the full response
+├── <model>__<condition>__run<N>.jsonl   # one record per sample: full visible response, hidden reasoning if any
 ├── results_matrix.csv          # (model, condition, task, run) cells
 ├── condition_summary.csv
 └── compliance.csv
@@ -149,9 +187,11 @@ figures/                        # written by the notebook
 ## Cost
 
 Use `--estimate`; it builds the real prompts and multiplies by the prices in
-`config.py`. For orientation, the default six cheap models × 19 conditions ×
-~1,100 samples × 1 run is roughly 125k calls and, at 2025 list prices,
-somewhere around 100–150 USD, more than half of it Claude Haiku. Prompts are
-long (few-shot examples plus some multi-paragraph disclosures), so input
-tokens matter as much as output. The frontier set is about ten times that
-per run. `--pilot --runs 1 --max-samples 50` is a few dollars.
+`config.py`. For orientation, the default six models × 19 conditions ×
+~1,100 samples × 1 run is roughly 125k calls. Prompts are long (few-shot
+examples plus some multi-paragraph disclosures), so input tokens matter as
+much as output. At the September 2026 list prices above that is on the
+order of 60–90 USD for the full default run, of which Gemini, MiniMax and
+GPT-5.6 Luna are about three quarters and Qwen3.7 Flash a few dollars.
+`--pilot --runs 1 --max-samples 50` is roughly 10–15 USD. Local models are
+free and slow.

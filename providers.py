@@ -6,22 +6,29 @@ Unified async interface for calling every model in config.MODELS.
 Three provider kinds:
   anthropic      – native Anthropic Messages API
   openai_compat  – any OpenAI-style POST {base_url}/chat/completions endpoint
-                   (OpenAI, Gemini's OpenAI-compatible layer, DeepSeek,
-                   Mistral, DashScope/Qwen, OpenRouter, Azure AI Foundry
-                   serverless, vLLM, Ollama, ...)
+                   (OpenAI, Gemini's OpenAI-compatible layer, DeepSeek, Z.ai,
+                   DashScope/Qwen, MiniMax, Mistral, OpenRouter, Ollama,
+                   LM Studio, vLLM, Azure AI Foundry, ...)
   mock           – offline test double, returns a canned answer
 
 Credentials and endpoints are read from environment variables named in the
 model config (`api_key_env`, `base_url_env`).  `.env` is loaded by
 run_experiment.py via python-dotenv.
+
+Hidden reasoning: thinking-capable models are asked to switch thinking off
+through `request_overrides` in the model config.  Whatever hidden reasoning
+still comes back (a `reasoning_content` / `reasoning` field, or an inline
+<think>...</think> block) is separated from the visible answer and returned
+in `LLMResponse.reasoning`, never merged into `content`.
 """
 
 import asyncio
 import os
 import random
+import re
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 import httpx
 
@@ -30,12 +37,13 @@ import httpx
 class LLMResponse:
     """Standardised response from any provider."""
     model_id: str
-    content: str                # full text response (CoT + answer)
+    content: str                # visible text (CoT + answer)
     input_tokens: int
     output_tokens: int
     latency_ms: float
     finish_reason: str = ""     # "stop", "length"/"max_tokens", ...
-    truncated: bool = False     # True when the output hit max_tokens
+    truncated: bool = False     # True when the output hit the token cap
+    reasoning: str = ""         # hidden reasoning returned by the provider, if any
     raw: Optional[dict] = None  # provider-specific payload for debugging
 
 
@@ -52,7 +60,7 @@ class ConfigError(Exception):
 MAX_RETRIES = 4
 RETRY_BACKOFF = [2, 5, 15, 30]          # seconds, plus jitter
 RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504, 529}
-TIMEOUT_SECONDS = 180
+TIMEOUT_SECONDS = 300                   # local models can be slow
 
 _client: Optional[httpx.AsyncClient] = None
 
@@ -100,8 +108,7 @@ async def _retry(coro_fn, *args, **kwargs):
         except Exception as e:  # noqa: BLE001 – we classify below
             last_err = e
             if not _is_retryable(e):
-                detail = _describe(e)
-                raise ProviderError(f"Non-retryable error: {detail}") from e
+                raise ProviderError(f"Non-retryable error: {_describe(e)}") from e
             if attempt < MAX_RETRIES - 1:
                 wait = _retry_after(e) or (RETRY_BACKOFF[attempt] + random.uniform(0, 1))
                 print(f"  ⚠ Retry {attempt + 1}/{MAX_RETRIES} after {wait:.0f}s: {_describe(e)}")
@@ -118,6 +125,9 @@ def _describe(exc: Optional[Exception]) -> str:
 
 # ── Config resolution ───────────────────────────────────────────────────
 
+_PLACEHOLDER_KEYS = ("sk-ant-...", "sk-...", "AIza...", "...")
+
+
 def resolve_model(model_cfg: dict) -> dict:
     """
     Turn a config.MODELS entry into concrete call parameters, reading env
@@ -125,14 +135,24 @@ def resolve_model(model_cfg: dict) -> dict:
     missing, so a long run never starts with a broken model.
     """
     provider = model_cfg["provider"]
-    resolved = {"provider": provider, "model_id": model_cfg["model_id"]}
+    resolved = {
+        "provider": provider,
+        "model_id": model_cfg["model_id"],
+        "request_overrides": dict(model_cfg.get("request_overrides") or {}),
+        "max_tokens_param": model_cfg.get("max_tokens_param", "max_tokens"),
+        # "temperature" key present with None means "omit the field"
+        "temperature": model_cfg.get("temperature", "default"),
+        "hidden_reasoning": model_cfg.get("hidden_reasoning", "unknown"),
+    }
 
     if provider == "mock":
         return resolved
 
     key_env = model_cfg.get("api_key_env")
     api_key = os.environ.get(key_env, "") if key_env else ""
-    if not api_key or api_key.startswith(("sk-ant-...", "sk-...", "AIza...", "...")):
+    if not api_key or api_key.startswith(_PLACEHOLDER_KEYS):
+        api_key = model_cfg.get("api_key_default", "")
+    if not api_key:
         raise ConfigError(f"{key_env} is not set (needed for {model_cfg['display']})")
     resolved["api_key"] = api_key
 
@@ -142,20 +162,88 @@ def resolve_model(model_cfg: dict) -> dict:
         if not base_url:
             raise ConfigError(f"No base URL for {model_cfg['display']} (set {base_env})")
         resolved["base_url"] = base_url.rstrip("/")
-        extra_headers_env = model_cfg.get("extra_headers_env")
-        resolved["extra_headers"] = {}
-        if extra_headers_env and os.environ.get(extra_headers_env):
-            # format: "Header-A: value;Header-B: value"
-            for pair in os.environ[extra_headers_env].split(";"):
-                if ":" in pair:
-                    k, v = pair.split(":", 1)
-                    resolved["extra_headers"][k.strip()] = v.strip()
 
     model_id_env = model_cfg.get("model_id_env")
     if model_id_env and os.environ.get(model_id_env):
         resolved["model_id"] = os.environ[model_id_env]
 
     return resolved
+
+
+# ── Reasoning separation ────────────────────────────────────────────────
+
+_THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL | re.IGNORECASE)
+
+
+def split_reasoning(content: str, reasoning: str = "") -> Tuple[str, str]:
+    """
+    Return (visible_content, hidden_reasoning).  Inline <think> blocks are
+    moved out of the content.  If the content is empty but a reasoning field
+    is present (Ollama + Gemma 4 on the /v1 endpoint do this), the reasoning
+    is promoted to content because it is the only text the model produced.
+    """
+    content = content or ""
+    reasoning = reasoning or ""
+    blocks = _THINK_RE.findall(content)
+    if blocks:
+        reasoning = "\n".join([reasoning] + [b.strip() for b in blocks]).strip()
+        content = _THINK_RE.sub("", content).strip()
+    if not content.strip() and reasoning.strip():
+        return reasoning.strip(), ""
+    return content, reasoning
+
+
+# ── OpenAI-compatible chat completions ──────────────────────────────────
+
+def build_openai_body(resolved: dict, system: str, user: str,
+                      max_tokens: int, temperature: float) -> dict:
+    """Pure function so the request shape can be unit-tested."""
+    body = {
+        "model": resolved["model_id"],
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        resolved.get("max_tokens_param", "max_tokens"): max_tokens,
+    }
+    model_temp = resolved.get("temperature", "default")
+    if model_temp == "default":
+        body["temperature"] = temperature
+    elif model_temp is not None:
+        body["temperature"] = model_temp
+    body.update(resolved.get("request_overrides") or {})
+    return body
+
+
+async def _call_openai_compat(resolved: dict, system: str, user: str,
+                              max_tokens: int, temperature: float) -> LLMResponse:
+    url = f"{resolved['base_url']}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {resolved['api_key']}",
+        "content-type": "application/json",
+    }
+    body = build_openai_body(resolved, system, user, max_tokens, temperature)
+    t0 = time.monotonic()
+    r = await _get_client().post(url, headers=headers, json=body)
+    r.raise_for_status()
+    elapsed = (time.monotonic() - t0) * 1000
+    data = r.json()
+    if "choices" not in data or not data["choices"]:
+        raise ProviderError(f"Malformed response (no choices): {str(data)[:300]}")
+    choice = data["choices"][0]
+    message = choice.get("message", {}) or {}
+    raw_content = message.get("content") or ""
+    raw_reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
+    content, reasoning = split_reasoning(raw_content, raw_reasoning)
+    finish = choice.get("finish_reason", "") or ""
+    usage = data.get("usage", {}) or {}
+    return LLMResponse(
+        model_id=resolved["model_id"], content=content,
+        input_tokens=usage.get("prompt_tokens", 0),
+        output_tokens=usage.get("completion_tokens", 0),
+        latency_ms=elapsed, finish_reason=finish,
+        truncated=(finish == "length"), reasoning=reasoning, raw=data,
+    )
 
 
 # ── Anthropic (native Messages API) ─────────────────────────────────────
@@ -171,69 +259,32 @@ async def _call_anthropic(resolved: dict, system: str, user: str,
     body = {
         "model": resolved["model_id"],
         "max_tokens": max_tokens,
-        "temperature": temperature,
         "system": system,
         "messages": [{"role": "user", "content": user}],
     }
+    model_temp = resolved.get("temperature", "default")
+    if model_temp == "default":
+        body["temperature"] = temperature
+    elif model_temp is not None:
+        body["temperature"] = model_temp
+    body.update(resolved.get("request_overrides") or {})
     t0 = time.monotonic()
     r = await _get_client().post(url, headers=headers, json=body)
     r.raise_for_status()
     elapsed = (time.monotonic() - t0) * 1000
     data = r.json()
-    text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
+    blocks = data.get("content", [])
+    text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+    thinking = "\n".join(b.get("thinking", "") for b in blocks if b.get("type") == "thinking")
+    content, reasoning = split_reasoning(text, thinking)
     stop = data.get("stop_reason", "") or ""
     usage = data.get("usage", {})
     return LLMResponse(
-        model_id=resolved["model_id"], content=text,
+        model_id=resolved["model_id"], content=content,
         input_tokens=usage.get("input_tokens", 0),
         output_tokens=usage.get("output_tokens", 0),
         latency_ms=elapsed, finish_reason=stop,
-        truncated=(stop == "max_tokens"), raw=data,
-    )
-
-
-# ── OpenAI-compatible chat completions ──────────────────────────────────
-
-async def _call_openai_compat(resolved: dict, system: str, user: str,
-                              max_tokens: int, temperature: float) -> LLMResponse:
-    url = f"{resolved['base_url']}/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {resolved['api_key']}",
-        "content-type": "application/json",
-        **resolved.get("extra_headers", {}),
-    }
-    body = {
-        "model": resolved["model_id"],
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-    }
-    t0 = time.monotonic()
-    r = await _get_client().post(url, headers=headers, json=body)
-    r.raise_for_status()
-    elapsed = (time.monotonic() - t0) * 1000
-    data = r.json()
-    if "choices" not in data or not data["choices"]:
-        raise ProviderError(f"Malformed response (no choices): {str(data)[:300]}")
-    choice = data["choices"][0]
-    message = choice.get("message", {}) or {}
-    text = message.get("content") or ""
-    # Some reasoning models put the chain in a separate field; keep it so the
-    # language analysis can see it.
-    reasoning = message.get("reasoning_content") or message.get("reasoning")
-    if reasoning and reasoning not in text:
-        text = f"{reasoning}\n\n{text}"
-    finish = choice.get("finish_reason", "") or ""
-    usage = data.get("usage", {}) or {}
-    return LLMResponse(
-        model_id=resolved["model_id"], content=text,
-        input_tokens=usage.get("prompt_tokens", 0),
-        output_tokens=usage.get("completion_tokens", 0),
-        latency_ms=elapsed, finish_reason=finish,
-        truncated=(finish == "length"), raw=data,
+        truncated=(stop == "max_tokens"), reasoning=reasoning, raw=data,
     )
 
 
@@ -281,11 +332,14 @@ async def call_model(resolved: dict, system: str, user: str,
 
 
 async def smoke_test(resolved: dict) -> LLMResponse:
-    """Cheapest possible call to confirm the key, endpoint and model id work."""
+    """
+    Cheapest possible call that still exercises the real request shape
+    (thinking toggle, token parameter, temperature handling).
+    """
     return await call_model(
         resolved,
         system="Reply with the single word OK.",
         user="Say OK.",
-        max_tokens=8,
+        max_tokens=64,
         temperature=0.0,
     )

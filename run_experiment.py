@@ -9,7 +9,8 @@ Usage:
     python run_experiment.py --dry-run              # show matrix, no API calls
     python run_experiment.py --estimate --runs 1    # rough cost estimate (loads data)
     python run_experiment.py --pilot --runs 1       # 8 conditions, default cheap models
-    python run_experiment.py --models gpt-4o-mini,deepseek-chat --conditions english,mandarin
+    python run_experiment.py --models gpt-5.6-luna,deepseek-v4-flash --conditions english,mandarin
+    python run_experiment.py --models ollama --concurrency 1 --runs 1   # local model via Ollama
     python run_experiment.py --models mock --runs 1 # offline pipeline check (fake answers)
 
 Results are appended per sample to results/<model>__<condition>__run<N>.jsonl,
@@ -142,6 +143,7 @@ def summarize_cell(model_key: str, condition_key: str, run_id: int, rows: List[d
     truncated = sum(1 for r in rows if r.get("truncated"))
     marker_missing = sum(1 for r in rows if not r.get("error") and not r.get("answer_marker_found"))
     unmapped = sum(1 for r in rows if not r.get("error") and not r.get("predicted_in_label_set"))
+    hidden = sum(1 for r in rows if r.get("hidden_reasoning_chars", 0) > 0)
     out_tokens = sum(r.get("output_tokens", 0) for r in rows)
     in_tokens = sum(r.get("input_tokens", 0) for r in rows)
     latency = sum(r.get("latency_ms", 0) for r in rows)
@@ -171,6 +173,8 @@ def summarize_cell(model_key: str, condition_key: str, run_id: int, rows: List[d
         "truncated": truncated,
         "answer_marker_missing": marker_missing,
         "predicted_outside_label_set": unmapped,
+        "hidden_reasoning_samples": hidden,
+        "hidden_reasoning_policy": MODELS[model_key].get("hidden_reasoning", "unknown"),
         "total_input_tokens": in_tokens,
         "total_output_tokens": out_tokens,
         "avg_output_tokens": out_tokens / answered if answered else 0.0,
@@ -199,7 +203,8 @@ async def _run_sample(resolved: dict, model_key: str, condition_key: str, run_id
             return {**base, "predicted_raw": "", "predicted": "", "correct": False,
                     "answer_marker_found": False, "predicted_in_label_set": False,
                     "truncated": False, "finish_reason": "", "error": str(e)[:500],
-                    "input_tokens": 0, "output_tokens": 0, "latency_ms": 0, "full_response": ""}
+                    "input_tokens": 0, "output_tokens": 0, "latency_ms": 0, "full_response": "",
+                    "hidden_reasoning": "", "hidden_reasoning_chars": 0}
 
     raw_pred, marker = extract_answer(resp.content)
     pred = normalize_to_label(raw_pred, labels)
@@ -218,6 +223,8 @@ async def _run_sample(resolved: dict, model_key: str, condition_key: str, run_id
         "output_tokens": resp.output_tokens,
         "latency_ms": resp.latency_ms,
         "full_response": resp.content,
+        "hidden_reasoning": resp.reasoning,
+        "hidden_reasoning_chars": len(resp.reasoning or ""),
     }
 
 
@@ -256,7 +263,8 @@ async def run_cell(model_key: str, resolved: dict, condition_key: str,
     print(
         f"  ✓ {model_key:18s} | {condition_key:14s} | run {run_id} | "
         f"acc={summary['accuracy']:.1%} (n={summary['total']}, err={summary['errors']}, "
-        f"no-marker={summary['answer_marker_missing']}) | out-tok={summary['total_output_tokens']:,} | "
+        f"no-marker={summary['answer_marker_missing']}, hidden-cot={summary['hidden_reasoning_samples']}) | "
+        f"out-tok={summary['total_output_tokens']:,} | "
         f"{'resumed' if not todo else f'{took:.0f}s'}"
     )
     return summary
@@ -409,8 +417,9 @@ async def run_smoke_test(model_keys: List[str]) -> bool:
             continue
         try:
             resp = await smoke_test(resolved)
+            hidden = f", hidden reasoning {len(resp.reasoning)} chars" if resp.reasoning else ""
             print(f"  ✓ {m:<20} {resolved['model_id']:<32} → {resp.content.strip()[:30]!r} "
-                  f"({resp.latency_ms:.0f} ms)")
+                  f"({resp.latency_ms:.0f} ms, {resp.output_tokens} out tokens{hidden})")
         except Exception as e:  # noqa: BLE001
             print(f"  ✗ {m:<20} {resolved.get('model_id', '')}: {e}")
             ok = False
@@ -419,10 +428,11 @@ async def run_smoke_test(model_keys: List[str]) -> bool:
 
 
 def list_everything():
-    print("\nMODELS (default set marked *):")
+    print("\nMODELS (default set marked *; thinking = hidden-reasoning policy; env var = API key):")
     for k, v in MODELS.items():
         mark = "*" if k in DEFAULT_MODELS else " "
-        print(f"  {mark} {k:<20} {v['model_id']:<40} {v['display']}")
+        print(f"  {mark} {k:<22} {v['model_id']:<32} thinking={v.get('hidden_reasoning', '?'):<15} "
+              f"{v.get('api_key_env') or '-':<18} {v['display']}")
     print("\nCONDITIONS:")
     for k, v in CONDITIONS.items():
         print(f"    {k:<16} {v['family']}")

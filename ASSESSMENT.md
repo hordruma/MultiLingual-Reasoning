@@ -154,3 +154,43 @@ fakery and fixed or removed.
   held constant across conditions, but it is a bias toward English.
 - Exact-match scoring after label normalisation is still strict; a model that
   writes "Yes, hearsay" is mapped to "Yes", but "Likely yes" is not.
+
+## Addendum (same day): model refresh and the hidden-reasoning confound
+
+The first pass kept a 2025 model list. It was replaced with the cheap tier
+current in September 2026 (GPT-5.6 Luna, Gemini 3.1 Flash-Lite, DeepSeek V4
+Flash, Qwen3.7 Flash, GLM-5.3 Flash, MiniMax M3) plus local Ollama / LM
+Studio entries. Ids, endpoints and prices come from web searches of public
+price lists and provider docs; the provider sites themselves were not
+reachable from the sandbox, so `--smoke-test` is the real verification.
+
+Refreshing the list surfaced a confound that the original design did not
+consider and that the 2025 list mostly avoided: **every current cheap model
+is a thinking model.** If it reasons in a hidden channel and then writes the
+requested visible chain of thought, the experiment measures the language of
+a write-up, not of the reasoning. Changes:
+
+- Per-model `request_overrides` switch thinking off where the API allows it
+  (OpenAI `reasoning_effort: none`, DeepSeek and MiniMax
+  `thinking: {type: disabled}`, DashScope `enable_thinking: false`, Ollama
+  `reasoning_effort: none`, OpenRouter `reasoning: {enabled: false}`).
+- Where it cannot be switched off (GLM-5.3 Flash; Gemini 3.1 only goes down
+  to "low"), the model config says so (`hidden_reasoning`), and whatever
+  hidden reasoning the provider returns is stored per sample in
+  `hidden_reasoning`, never merged into the visible response. The report's
+  compliance table has a `hidden` column; a non-zero rate for a model that
+  claims "off" means the toggle did not work and the model's numbers need
+  the caveat.
+- Inline `<think>…</think>` blocks are separated the same way.
+- GPT-5.x requires `max_completion_tokens` and rejects `temperature`; the
+  adapter handles both per model, so temperature 0 is not uniform across
+  models. This is recorded in the summary and is a caveat for cross-model
+  comparisons.
+- Output cap raised from 2048 to 4096 tokens to reduce the truncation
+  confound for verbose scripts.
+
+Still unverified from here: every model id and price above, the exact
+`reasoning_effort` values Gemini's OpenAI layer accepts for 3.1 Flash-Lite,
+and DeepSeek's peak/off-peak schedule. The smoke test prints output tokens
+and hidden-reasoning length per model so a wrong toggle is visible before
+any money is spent.

@@ -4,13 +4,13 @@
 Research project testing whether the language used for chain-of-thought
 reasoning affects LLM accuracy on legal classification tasks. 19 reasoning
 conditions (14 natural languages, 3 abstract notations, wildcard, no-CoT
-control) × configurable models (default: 6 cheap cloud models) × 9
-closed-label LegalBench tasks. Audit history and known caveats are in
+control) × configurable models (default: 6 cheap cloud models, Sept 2026 lineup;
+local Ollama/LM Studio supported) × 9 closed-label LegalBench tasks. Audit history and known caveats are in
 ASSESSMENT.md; read it before changing scoring or prompts.
 
 ## Repository Layout
 ```
-config.py          — MODELS (with env-var names, prices), CONDITIONS, LEGALBENCH_TASKS (label sets), parameters
+config.py          — MODELS (env vars, thinking toggles, prices), CONDITIONS, LEGALBENCH_TASKS (label sets), parameters
 data_loader.py     — LegalBench test split (HF hub files) + official base_prompt.txt (GitHub), local cache
 providers.py       — Async adapters: anthropic (native), openai_compat (any /chat/completions host), mock
 run_experiment.py  — Resumable runner (CLI): --list, --smoke-test, --estimate, --dry-run, --pilot
@@ -28,7 +28,7 @@ figures/           — Notebook output (gitignored)
 ```bash
 pip install -r requirements.txt
 cp .env.template .env               # fill in keys for the models you will use
-python -m pytest -q                 # 25 offline tests
+python -m pytest -q                 # 30 offline tests
 python run_experiment.py --list
 python run_experiment.py --smoke-test
 python run_experiment.py --estimate --runs 1
@@ -37,7 +37,9 @@ python analyze.py
 ```
 
 ## Key Conventions
-- Temperature 0.0, 2048 max output tokens; `truncated` is recorded per sample.
+- Temperature 0.0 where accepted (GPT-5.x omits it), 4096 max output tokens; `truncated` is recorded per sample.
+- Hidden thinking is disabled per model via `request_overrides`; any hidden reasoning that
+  still comes back is stored in `hidden_reasoning`, never merged into `full_response`.
 - Samples per task: seeded random subset (`SAMPLE_SEED`), same for every cell.
 - Prompt = official LegalBench base_prompt (definition + few-shot) with
   `{{text}}` substituted, trailing `A:` cue removed, plus "Answer with exactly

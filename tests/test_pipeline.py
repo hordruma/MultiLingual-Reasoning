@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze  # noqa: E402
 import data_loader  # noqa: E402
 import run_experiment as rx  # noqa: E402
-from providers import resolve_model, ConfigError  # noqa: E402
+from providers import resolve_model, build_openai_body, split_reasoning, ConfigError  # noqa: E402
 
 
 # ── extract_answer ───────────────────────────────────────────────────────
@@ -170,7 +170,7 @@ def test_script_ratio():
 
 def test_origin_advantage_is_within_model():
     cells = []
-    for model, eng, man in [("deepseek-chat", 0.70, 0.72), ("gpt-4o-mini", 0.80, 0.75)]:
+    for model, eng, man in [("deepseek-v4-flash", 0.70, 0.72), ("gpt-5.6-luna", 0.80, 0.75)]:
         cells.append({"model": model, "condition": "english", "accuracy": eng})
         cells.append({"model": model, "condition": "mandarin", "accuracy": man})
     out = analyze.origin_advantage(cells)
@@ -195,3 +195,53 @@ def test_build_cell_frame_and_paired_test():
     per_model = paired[0]
     assert per_model["n_pairs"] == 4
     assert per_model["discordant_a_wins"] == 1 and per_model["discordant_b_wins"] == 2
+
+
+# ── request shape / reasoning separation ─────────────────────────────────
+
+def test_build_body_default_model():
+    resolved = {"model_id": "m", "max_tokens_param": "max_tokens", "temperature": "default",
+                "request_overrides": {}}
+    body = build_openai_body(resolved, "sys", "usr", 4096, 0.0)
+    assert body["max_tokens"] == 4096 and body["temperature"] == 0.0
+    assert body["messages"][0] == {"role": "system", "content": "sys"}
+
+
+def test_build_body_gpt56_shape():
+    resolved = {"model_id": "gpt-5.6-luna", "max_tokens_param": "max_completion_tokens",
+                "temperature": None, "request_overrides": {"reasoning_effort": "none"}}
+    body = build_openai_body(resolved, "s", "u", 4096, 0.0)
+    assert "temperature" not in body and "max_tokens" not in body
+    assert body["max_completion_tokens"] == 4096 and body["reasoning_effort"] == "none"
+
+
+def test_build_body_thinking_overrides_present_for_default_models():
+    import config
+    from providers import resolve_model as rm
+    for key in config.DEFAULT_MODELS:
+        cfg = dict(config.MODELS[key])
+        cfg["api_key_default"] = "x"       # bypass env for the shape test
+        body = build_openai_body(rm(cfg), "s", "u", 10, 0.0)
+        assert body["model"] == cfg["model_id"]
+        if cfg["hidden_reasoning"] == "off":
+            assert cfg["request_overrides"], f"{key} claims thinking off but sends no override"
+            assert all(body.get(k) == v for k, v in cfg["request_overrides"].items())
+
+
+def test_split_reasoning_think_tags_and_fields():
+    content, reasoning = split_reasoning("<think>hmm</think>\nANSWER: Yes", "")
+    assert content == "ANSWER: Yes" and reasoning == "hmm"
+    content, reasoning = split_reasoning("ANSWER: No", "prior thoughts")
+    assert content == "ANSWER: No" and reasoning == "prior thoughts"
+    # Gemma-4-on-Ollama case: everything came back in the reasoning field
+    content, reasoning = split_reasoning("", "the only text\nANSWER: Yes")
+    assert content.endswith("ANSWER: Yes") and reasoning == ""
+
+
+def test_local_model_needs_no_key(monkeypatch):
+    monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen3.6:27b")
+    import config
+    r = resolve_model(config.MODELS["ollama"])
+    assert r["api_key"] == "ollama" and r["model_id"] == "qwen3.6:27b"
+    assert r["base_url"] == "http://localhost:11434/v1"

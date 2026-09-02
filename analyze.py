@@ -65,6 +65,7 @@ def build_cell_frame(rows: Iterable[dict]) -> List[dict]:
             "answer_marker_missing": sum(1 for r in answered if not r.get("answer_marker_found")),
             "predicted_outside_label_set": sum(1 for r in answered if not r.get("predicted_in_label_set", True)),
             "truncated": sum(1 for r in answered if r.get("truncated")),
+            "hidden_reasoning": sum(1 for r in answered if r.get("hidden_reasoning_chars", 0) > 0),
             "avg_output_tokens": out_tok / len(answered) if answered else 0.0,
             "total_output_tokens": out_tok,
             "total_input_tokens": sum(r.get("input_tokens", 0) for r in answered),
@@ -199,7 +200,8 @@ def majority_baselines(rows: List[dict]) -> Dict[str, dict]:
 
 def compliance_table(rows: List[dict]) -> List[dict]:
     """Mean script ratio, marker-missing rate and error rate per (model, condition)."""
-    by = defaultdict(lambda: {"ratios": [], "n": 0, "no_marker": 0, "errors": 0, "outside": 0, "trunc": 0})
+    by = defaultdict(lambda: {"ratios": [], "n": 0, "no_marker": 0, "errors": 0, "outside": 0, "trunc": 0,
+                              "hidden": 0})
     for r in rows:
         d = by[(r["model"], r["condition"])]
         d["n"] += 1
@@ -212,6 +214,8 @@ def compliance_table(rows: List[dict]) -> List[dict]:
             d["outside"] += 1
         if r.get("truncated"):
             d["trunc"] += 1
+        if r.get("hidden_reasoning_chars", 0) > 0:
+            d["hidden"] += 1
         script = CONDITIONS.get(r["condition"], {}).get("script")
         ratio = script_ratio(reasoning_part(r.get("full_response", "")), script)
         if ratio is not None:
@@ -225,6 +229,7 @@ def compliance_table(rows: List[dict]) -> List[dict]:
             "outside_label_rate": d["outside"] / d["n"],
             "error_rate": d["errors"] / d["n"],
             "truncated_rate": d["trunc"] / d["n"],
+            "hidden_reasoning_rate": d["hidden"] / d["n"],
         })
     return out
 
@@ -274,9 +279,9 @@ def paired_condition_test(rows: List[dict], cond_a: str, cond_b: str) -> List[di
 
 ORIGIN_HYPOTHESES = [
     # (model, language) pairs where training-data origin might help.
-    ("deepseek-chat", "mandarin"), ("qwen-plus", "mandarin"),
-    ("deepseek-v3", "mandarin"), ("qwen-max", "mandarin"),
-    ("mistral-small", "german"), ("mistral-large", "german"),
+    ("deepseek-v4-flash", "mandarin"), ("qwen3.7-flash", "mandarin"),
+    ("glm-5.3-flash", "mandarin"), ("minimax-m3", "mandarin"),
+    ("mistral-small", "german"),
 ]
 
 
@@ -334,12 +339,15 @@ def print_report(rows: List[dict], cells: List[dict]):
         print(f"{i:<5} {d['family']:<16} {d['mean']:>7.1%} ±{d['std']:.3f}")
 
     print("\n── COMPLIANCE / FAILURE MODES per model×condition ──")
-    print("   script_ratio = share of letters in the expected writing system (None for Latin/abstract)\n")
-    print(f"{'Model':<18} {'Condition':<14} {'n':>5} {'script':>7} {'no-mark':>8} {'off-lbl':>8} {'error':>7} {'trunc':>7}")
+    print("   script_ratio = share of letters in the expected writing system (None for Latin/abstract)")
+    print("   hidden = share of samples where the provider returned hidden reasoning (a confound: the")
+    print("   visible chain of thought is then a write-up, not the reasoning itself)\n")
+    print(f"{'Model':<22} {'Condition':<14} {'n':>5} {'script':>7} {'no-mark':>8} {'off-lbl':>8} {'error':>7} {'trunc':>7} {'hidden':>7}")
     for d in compliance_table(rows):
         sr = f"{d['script_ratio']:.0%}" if d["script_ratio"] is not None else "  n/a"
-        print(f"{d['model']:<18} {d['condition']:<14} {d['n']:>5} {sr:>7} {d['no_marker_rate']:>8.1%} "
-              f"{d['outside_label_rate']:>8.1%} {d['error_rate']:>7.1%} {d['truncated_rate']:>7.1%}")
+        print(f"{d['model']:<22} {d['condition']:<14} {d['n']:>5} {sr:>7} {d['no_marker_rate']:>8.1%} "
+              f"{d['outside_label_rate']:>8.1%} {d['error_rate']:>7.1%} {d['truncated_rate']:>7.1%} "
+              f"{d['hidden_reasoning_rate']:>7.1%}")
 
     conds = {r["condition"] for r in rows}
     for other in ["wildcard", "no_cot", "mandarin", "pseudocode"]:
