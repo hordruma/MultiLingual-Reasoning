@@ -28,7 +28,7 @@ figures/           — Notebook output (gitignored)
 ```bash
 pip install -r requirements.txt
 cp .env.template .env               # fill in keys for the models you will use
-python -m pytest -q                 # 30 offline tests
+python -m pytest -q                 # 38 offline tests
 python run_experiment.py --list
 python run_experiment.py --smoke-test
 python run_experiment.py --estimate --runs 1

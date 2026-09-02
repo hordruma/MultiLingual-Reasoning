@@ -111,7 +111,7 @@ are excluded. Test sizes are from the LegalBench paper and approximate.
 python -m venv .venv && source .venv/bin/activate   # or --break-system-packages
 pip install -r requirements.txt
 cp .env.template .env      # fill in the keys for the models you will use
-python -m pytest -q        # 30 offline tests, no network needed
+python -m pytest -q        # 38 offline tests, no network needed
 ```
 
 Data comes from two places on first use and is cached under `data/`:
