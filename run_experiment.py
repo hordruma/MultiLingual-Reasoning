@@ -20,6 +20,7 @@ so an interrupted run resumes where it stopped.  Use --fresh to discard them.
 import argparse
 import asyncio
 import json
+import os
 import re
 import sys
 import time
@@ -66,7 +67,7 @@ def build_prompts(sample: LegalBenchSample, condition_key: str) -> Tuple[str, st
 # ── Answer extraction ────────────────────────────────────────────────────
 
 _ANSWER_RE = re.compile(
-    r"^[\s\*\_#>`\-]*(?:final\s+)?(?:answer|a)\s*[:：\-–—]\s*(.+?)\s*$",
+    r"^[\s\*\_#>`\-]*(?:final\s+)?(?:answer|a)[\*\_`]*\s*[:：\-–—]\s*(.+?)\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 _STRIP_RE = re.compile(r"^[\s\*\_`\"'“”‘’\[\(]+|[\s\*\_`\"'“”‘’\]\)\.。!,;:]+$")
@@ -120,18 +121,26 @@ def score_answer(predicted: str, expected: str) -> bool:
 
 # ── Persistence helpers ──────────────────────────────────────────────────
 
+MAX_CONSECUTIVE_ERRORS = 10   # abort a cell when the endpoint is clearly down
+
 def cell_path(results_dir: Path, model_key: str, condition_key: str, run_id: int) -> Path:
     return results_dir / f"{model_key}__{condition_key}__run{run_id}.jsonl"
 
 
 def read_existing(path: Path) -> Dict[Tuple[str, int], dict]:
+    """Rows already written for a cell. A torn final line (crash mid-write) is skipped, not fatal."""
     done = {}
     if path.exists():
         with open(path, encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
+            for lineno, line in enumerate(f, 1):
+                if not line.strip():
+                    continue
+                try:
                     r = json.loads(line)
-                    done[(r["task"], r["idx"])] = r
+                except json.JSONDecodeError:
+                    print(f"  ⚠ {path.name}: skipping undecodable line {lineno} (partial write); it will be redone")
+                    continue
+                done[(r["task"], r["idx"])] = r
     return done
 
 
@@ -204,7 +213,7 @@ async def _run_sample(resolved: dict, model_key: str, condition_key: str, run_id
                     "answer_marker_found": False, "predicted_in_label_set": False,
                     "truncated": False, "finish_reason": "", "error": str(e)[:500],
                     "input_tokens": 0, "output_tokens": 0, "latency_ms": 0, "full_response": "",
-                    "hidden_reasoning": "", "hidden_reasoning_chars": 0}
+                    "hidden_reasoning": "", "hidden_reasoning_chars": 0, "reasoning_promoted": False}
 
     raw_pred, marker = extract_answer(resp.content)
     pred = normalize_to_label(raw_pred, labels)
@@ -225,6 +234,7 @@ async def _run_sample(resolved: dict, model_key: str, condition_key: str, run_id
         "full_response": resp.content,
         "hidden_reasoning": resp.reasoning,
         "hidden_reasoning_chars": len(resp.reasoning or ""),
+        "reasoning_promoted": resp.reasoning_promoted,
     }
 
 
@@ -241,23 +251,41 @@ async def run_cell(model_key: str, resolved: dict, condition_key: str,
     todo = [s for s in samples if (s.task, s.idx) not in existing or existing[(s.task, s.idx)].get("error")]
     rows = {k: v for k, v in existing.items() if not v.get("error")}
 
+    aborted = False
     if todo:
         t0 = time.monotonic()
-        tasks = [_run_sample(resolved, model_key, condition_key, run_id, s, semaphore) for s in todo]
+        tasks = [asyncio.ensure_future(_run_sample(resolved, model_key, condition_key, run_id, s, semaphore))
+                 for s in todo]
+        consecutive_errors = 0
         with open(path, "a", encoding="utf-8") as f:
             for coro in asyncio.as_completed(tasks):
                 r = await coro
                 rows[(r["task"], r["idx"])] = r
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
                 f.flush()
+                consecutive_errors = consecutive_errors + 1 if r.get("error") else 0
+                if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                    print(f"  ✗ {MAX_CONSECUTIVE_ERRORS} consecutive errors – aborting this cell "
+                          f"(last: {r['error'][:120]})")
+                    for t in tasks:
+                        t.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                    aborted = True
+                    break
         took = time.monotonic() - t0
     else:
         took = 0.0
 
-    # Rewrite file without stale error rows so it reflects the final state.
-    with open(path, "w", encoding="utf-8") as f:
+    # Rewrite the file without stale error rows, atomically, so an interrupt
+    # here cannot lose the rows that were already paid for.
+    tmp = path.with_suffix(".jsonl.tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
         for key in sorted(rows):
             f.write(json.dumps(rows[key], ensure_ascii=False) + "\n")
+    os.replace(tmp, path)
+    if aborted:
+        raise RuntimeError(f"cell aborted after {MAX_CONSECUTIVE_ERRORS} consecutive errors; "
+                           f"{len(rows)} rows kept, rerun to resume")
 
     summary = summarize_cell(model_key, condition_key, run_id, list(rows.values()))
     print(
@@ -428,11 +456,11 @@ async def run_smoke_test(model_keys: List[str]) -> bool:
 
 
 def list_everything():
-    print("\nMODELS (default set marked *; thinking = hidden-reasoning policy; env var = API key):")
+    print("\nMODELS (default set marked *; thinking = hidden-reasoning policy; env var = API key, * = optional):")
     for k, v in MODELS.items():
         mark = "*" if k in DEFAULT_MODELS else " "
         print(f"  {mark} {k:<22} {v['model_id']:<32} thinking={v.get('hidden_reasoning', '?'):<15} "
-              f"{v.get('api_key_env') or '-':<18} {v['display']}")
+              f"{(v.get('api_key_env') or '-') + ('*' if v.get('api_key_default') else ''):<18} {v['display']}")
     print("\nCONDITIONS:")
     for k, v in CONDITIONS.items():
         print(f"    {k:<16} {v['family']}")

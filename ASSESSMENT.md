@@ -194,3 +194,31 @@ Still unverified from here: every model id and price above, the exact
 and DeepSeek's peak/off-peak schedule. The smoke test prints output tokens
 and hidden-reasoning length per model so a wrong toggle is visible before
 any money is spent.
+
+## Addendum: independent review pass
+
+A full-diff review against `main` found ten items; all were fixed and covered
+by tests (38 now):
+
+- A thinking-only reply (empty content, all text in the reasoning field)
+  was promoted to the visible response and dropped from the hidden-reasoning
+  count. It is still promoted so an answer can be extracted, but it stays
+  recorded as hidden reasoning, is flagged `reasoning_promoted`, and is
+  excluded from the script-ratio compliance signal.
+- `**ANSWER**: Yes` (emphasis before the colon) was not recognised as the
+  marker. Fixed; unclosed `<think>` blocks from truncated output are also
+  separated now.
+- A crash mid-write left a torn last line that made the cell unreadable on
+  every resume; it is now skipped with a warning and redone. The end-of-cell
+  rewrite is atomic (temp file + rename).
+- An unreachable endpoint cost ~52 s of retries per sample; connection
+  failures now get one quick retry and a cell aborts after 10 consecutive
+  errors, keeping the rows already written.
+- A 200 response that was not a TSV (consent or proxy page) would have been
+  cached as the test split forever; rows are validated before caching, and
+  the csv field-size limit is raised for long disclosures.
+- Notebook: crashed without an `english` condition; wrote CSVs to the same
+  paths as `analyze.py` with a different schema. Guarded and renamed to
+  `notebook_*.csv`.
+- `reasoning_part` sliced on an upper-cased offset (wrong for ß/ligatures);
+  duplicate `.gitignore` entry.

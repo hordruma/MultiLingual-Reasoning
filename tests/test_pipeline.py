@@ -229,13 +229,13 @@ def test_build_body_thinking_overrides_present_for_default_models():
 
 
 def test_split_reasoning_think_tags_and_fields():
-    content, reasoning = split_reasoning("<think>hmm</think>\nANSWER: Yes", "")
-    assert content == "ANSWER: Yes" and reasoning == "hmm"
-    content, reasoning = split_reasoning("ANSWER: No", "prior thoughts")
-    assert content == "ANSWER: No" and reasoning == "prior thoughts"
+    content, reasoning, promoted = split_reasoning("<think>hmm</think>\nANSWER: Yes", "")
+    assert content == "ANSWER: Yes" and reasoning == "hmm" and not promoted
+    content, reasoning, promoted = split_reasoning("ANSWER: No", "prior thoughts")
+    assert content == "ANSWER: No" and reasoning == "prior thoughts" and not promoted
     # Gemma-4-on-Ollama case: everything came back in the reasoning field
-    content, reasoning = split_reasoning("", "the only text\nANSWER: Yes")
-    assert content.endswith("ANSWER: Yes") and reasoning == ""
+    content, reasoning, promoted = split_reasoning("", "the only text\nANSWER: Yes")
+    assert content.endswith("ANSWER: Yes") and reasoning == content and promoted
 
 
 def test_local_model_needs_no_key(monkeypatch):
@@ -245,3 +245,52 @@ def test_local_model_needs_no_key(monkeypatch):
     r = resolve_model(config.MODELS["ollama"])
     assert r["api_key"] == "ollama" and r["model_id"] == "qwen3.6:27b"
     assert r["base_url"] == "http://localhost:11434/v1"
+
+
+# ── review follow-ups ────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("text, expected", [
+    ("**ANSWER**: Yes\n\nbecause.", "Yes"),
+    ("**Final Answer**: descriptive", "descriptive"),
+    ("Answer**: No", "No"),
+])
+def test_extract_answer_emphasis_before_colon(text, expected):
+    assert rx.extract_answer(text) == (expected, True)
+
+
+def test_split_reasoning_promotion_is_still_counted_as_hidden():
+    content, reasoning, promoted = split_reasoning("", "thinking...\nANSWER: Yes")
+    assert promoted and reasoning and content == reasoning
+    content, reasoning, promoted = split_reasoning("<think>partial thought", "")
+    assert content == "" or promoted
+    assert "partial thought" in reasoning
+
+
+def test_read_existing_skips_torn_line(tmp_path):
+    p = tmp_path / "m__c__run0.jsonl"
+    p.write_text(json.dumps({"task": "t", "idx": 0, "error": None}) + "\n" + '{"task": "t", "idx": 1, "err')
+    rows = rx.read_existing(p)
+    assert list(rows) == [("t", 0)]
+
+
+def test_reasoning_part_handles_case_changing_chars():
+    text = "Die Straße ist groß. ANSWER: Yes"
+    assert analyze.reasoning_part(text) == "Die Straße ist groß. "
+
+
+def test_loader_rejects_html_page():
+    assert not data_loader._looks_like_task_rows([{"<!doctype html>": "x"}])
+    assert data_loader._looks_like_task_rows([{"index": "0", "text": "t", "answer": "Yes"}])
+
+
+def test_cell_aborts_after_consecutive_errors(tmp_path, monkeypatch):
+    async def boom(*a, **k):
+        raise RuntimeError("connection refused")
+    monkeypatch.setattr(rx, "call_model", boom)
+    monkeypatch.setattr(rx, "MAX_CONSECUTIVE_ERRORS", 3)
+    samples = [data_loader.LegalBenchSample("t", i, "x", "Yes", "P") for i in range(20)]
+    resolved = resolve_model({"provider": "mock", "model_id": "mock"})
+    with pytest.raises(RuntimeError, match="aborted"):
+        asyncio.run(rx.run_cell("mock", resolved, "english", samples, 0, tmp_path, asyncio.Semaphore(2)))
+    kept = rx.read_existing(rx.cell_path(tmp_path, "mock", "english", 0))
+    assert 3 <= len(kept) < 20

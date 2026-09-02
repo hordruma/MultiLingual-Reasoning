@@ -44,6 +44,7 @@ class LLMResponse:
     finish_reason: str = ""     # "stop", "length"/"max_tokens", ...
     truncated: bool = False     # True when the output hit the token cap
     reasoning: str = ""         # hidden reasoning returned by the provider, if any
+    reasoning_promoted: bool = False  # content was empty; reasoning text used as the answer
     raw: Optional[dict] = None  # provider-specific payload for debugging
 
 
@@ -99,9 +100,13 @@ def _retry_after(exc: Exception) -> Optional[float]:
     return None
 
 
+CONNECT_RETRIES = 2                     # unreachable host: one quick retry, then give up
+
+
 async def _retry(coro_fn, *args, **kwargs):
     """Retry on transient failures only. 4xx auth/validation errors fail fast."""
     last_err: Optional[Exception] = None
+    max_attempts = MAX_RETRIES
     for attempt in range(MAX_RETRIES):
         try:
             return await coro_fn(*args, **kwargs)
@@ -109,11 +114,15 @@ async def _retry(coro_fn, *args, **kwargs):
             last_err = e
             if not _is_retryable(e):
                 raise ProviderError(f"Non-retryable error: {_describe(e)}") from e
+            if isinstance(e, httpx.ConnectError):
+                max_attempts = CONNECT_RETRIES
+            if attempt >= max_attempts - 1:
+                break
             if attempt < MAX_RETRIES - 1:
                 wait = _retry_after(e) or (RETRY_BACKOFF[attempt] + random.uniform(0, 1))
                 print(f"  ⚠ Retry {attempt + 1}/{MAX_RETRIES} after {wait:.0f}s: {_describe(e)}")
                 await asyncio.sleep(wait)
-    raise ProviderError(f"Failed after {MAX_RETRIES} attempts: {_describe(last_err)}") from last_err
+    raise ProviderError(f"Failed after {max_attempts} attempts: {_describe(last_err)}") from last_err
 
 
 def _describe(exc: Optional[Exception]) -> str:
@@ -173,14 +182,18 @@ def resolve_model(model_cfg: dict) -> dict:
 # ── Reasoning separation ────────────────────────────────────────────────
 
 _THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL | re.IGNORECASE)
+_THINK_OPEN_RE = re.compile(r"<think>(.*)$", re.DOTALL | re.IGNORECASE)
 
 
-def split_reasoning(content: str, reasoning: str = "") -> Tuple[str, str]:
+def split_reasoning(content: str, reasoning: str = "") -> Tuple[str, str, bool]:
     """
-    Return (visible_content, hidden_reasoning).  Inline <think> blocks are
-    moved out of the content.  If the content is empty but a reasoning field
-    is present (Ollama + Gemma 4 on the /v1 endpoint do this), the reasoning
-    is promoted to content because it is the only text the model produced.
+    Return (visible_content, hidden_reasoning, promoted).  Inline <think>
+    blocks (closed or truncated-open) are moved out of the content.  If the
+    content is empty but reasoning is present (Ollama + Gemma 4 on the /v1
+    endpoint do this; a thinking model that spent its whole budget thinking
+    does too), the reasoning text is used as the visible content so an answer
+    can still be extracted, BUT it stays recorded as hidden reasoning and
+    `promoted` is True so the row is counted as a hidden-reasoning sample.
     """
     content = content or ""
     reasoning = reasoning or ""
@@ -188,9 +201,13 @@ def split_reasoning(content: str, reasoning: str = "") -> Tuple[str, str]:
     if blocks:
         reasoning = "\n".join([reasoning] + [b.strip() for b in blocks]).strip()
         content = _THINK_RE.sub("", content).strip()
+    open_block = _THINK_OPEN_RE.search(content)
+    if open_block:  # unclosed <think>: the output was cut off mid-thought
+        reasoning = "\n".join([reasoning, open_block.group(1).strip()]).strip()
+        content = content[:open_block.start()].strip()
     if not content.strip() and reasoning.strip():
-        return reasoning.strip(), ""
-    return content, reasoning
+        return reasoning.strip(), reasoning.strip(), True
+    return content, reasoning, False
 
 
 # ── OpenAI-compatible chat completions ──────────────────────────────────
@@ -234,15 +251,16 @@ async def _call_openai_compat(resolved: dict, system: str, user: str,
     message = choice.get("message", {}) or {}
     raw_content = message.get("content") or ""
     raw_reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
-    content, reasoning = split_reasoning(raw_content, raw_reasoning)
+    content, reasoning, promoted = split_reasoning(raw_content, raw_reasoning)
     finish = choice.get("finish_reason", "") or ""
     usage = data.get("usage", {}) or {}
     return LLMResponse(
         model_id=resolved["model_id"], content=content,
-        input_tokens=usage.get("prompt_tokens", 0),
-        output_tokens=usage.get("completion_tokens", 0),
+        input_tokens=usage.get("prompt_tokens") or 0,
+        output_tokens=usage.get("completion_tokens") or 0,
         latency_ms=elapsed, finish_reason=finish,
-        truncated=(finish == "length"), reasoning=reasoning, raw=data,
+        truncated=(finish == "length"), reasoning=reasoning,
+        reasoning_promoted=promoted, raw=data,
     )
 
 
@@ -276,15 +294,16 @@ async def _call_anthropic(resolved: dict, system: str, user: str,
     blocks = data.get("content", [])
     text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
     thinking = "\n".join(b.get("thinking", "") for b in blocks if b.get("type") == "thinking")
-    content, reasoning = split_reasoning(text, thinking)
+    content, reasoning, promoted = split_reasoning(text, thinking)
     stop = data.get("stop_reason", "") or ""
-    usage = data.get("usage", {})
+    usage = data.get("usage", {}) or {}
     return LLMResponse(
         model_id=resolved["model_id"], content=content,
-        input_tokens=usage.get("input_tokens", 0),
-        output_tokens=usage.get("output_tokens", 0),
+        input_tokens=usage.get("input_tokens") or 0,
+        output_tokens=usage.get("output_tokens") or 0,
         latency_ms=elapsed, finish_reason=stop,
-        truncated=(stop == "max_tokens"), reasoning=reasoning, raw=data,
+        truncated=(stop == "max_tokens"), reasoning=reasoning,
+        reasoning_promoted=promoted, raw=data,
     )
 
 
@@ -323,7 +342,7 @@ PROVIDER_MAP = {
 
 
 async def call_model(resolved: dict, system: str, user: str,
-                     max_tokens: int = 2048, temperature: float = 0.0) -> LLMResponse:
+                     max_tokens: int = 4096, temperature: float = 0.0) -> LLMResponse:
     """Unified entry point – dispatches to the right provider with retries."""
     fn = PROVIDER_MAP.get(resolved["provider"])
     if fn is None:

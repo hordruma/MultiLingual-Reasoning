@@ -18,6 +18,7 @@ cannot be fetched, the task is skipped loudly rather than silently replaced.
 
 import csv
 import io
+import sys
 import json
 import random
 import re
@@ -34,6 +35,8 @@ GITHUB_RAW_BASE = "https://raw.githubusercontent.com/HazyResearch/legalbench/mai
 # Columns that are never model input.  `slice` (hearsay, personal_jurisdiction)
 # names the legal sub-category of the fact pattern and leaks the answer.
 NON_INPUT_FIELDS = {"answer", "label", "index", "idx", "id", "slice", "document_name", "doctrine"}
+
+csv.field_size_limit(min(sys.maxsize, 2**31 - 1))  # long disclosures exceed the 128 KiB default
 
 _PLACEHOLDER = re.compile(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}")
 _TRAILING_ANSWER_CUE = re.compile(r"(?:\n|^)\s*(?:A|Answer|Label|Output)\s*:\s*$", re.IGNORECASE)
@@ -70,6 +73,14 @@ def _parse_tsv(text: str) -> List[dict]:
     return rows
 
 
+def _looks_like_task_rows(rows: List[dict]) -> bool:
+    """Guard against caching an HTML error/consent page that happened to parse."""
+    if not rows:
+        return False
+    keys = set(rows[0].keys())
+    return "text" in keys and ("answer" in keys or "label" in keys)
+
+
 def _write_jsonl(path: Path, rows: List[dict]):
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
@@ -95,9 +106,11 @@ def fetch_test_rows(task_name: str) -> Optional[List[dict]]:
     text = _get(f"{HF_RESOLVE_BASE}/{task_name}/test.tsv")
     if text:
         rows = _parse_tsv(text)
-        if rows:
+        if _looks_like_task_rows(rows):
             _write_jsonl(cache_path, rows)
             return rows
+        print(f"  ✗ {task_name}/test.tsv did not parse as a LegalBench table (columns: "
+              f"{list(rows[0].keys())[:4] if rows else 'none'}); not caching")
 
     # 3. datasets library (optional)
     try:
@@ -112,7 +125,7 @@ def fetch_test_rows(task_name: str) -> Optional[List[dict]]:
             except TypeError:
                 ds = load_dataset("nguha/legalbench", task_name, split="test")
             rows = [dict(item) for item in ds]
-            if rows:
+            if _looks_like_task_rows(rows):
                 _write_jsonl(cache_path, rows)
                 return rows
         except Exception as e:  # noqa: BLE001
@@ -127,7 +140,7 @@ def fetch_test_rows(task_name: str) -> Optional[List[dict]]:
     manual = CACHE_DIR / task_name / "test.tsv"
     if manual.exists():
         rows = _parse_tsv(manual.read_text(encoding="utf-8"))
-        if rows:
+        if _looks_like_task_rows(rows):
             _write_jsonl(cache_path, rows)
             return rows
     return None

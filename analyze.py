@@ -14,6 +14,7 @@ import argparse
 import csv
 import json
 import math
+import re
 import statistics
 import unicodedata
 from collections import defaultdict
@@ -141,11 +142,16 @@ def script_ratio(text: str, script: Optional[str]) -> Optional[float]:
     return hits / letters if letters else None
 
 
+_ANSWER_WORD = re.compile(r"answer", re.IGNORECASE)
+
+
 def reasoning_part(full_response: str) -> str:
     """Everything before the final ANSWER line."""
     text = full_response or ""
-    idx = text.upper().rfind("ANSWER")
-    return text[:idx] if idx > 0 else text
+    last = None
+    for m in _ANSWER_WORD.finditer(text):
+        last = m
+    return text[:last.start()] if last and last.start() > 0 else text
 
 
 # ── Analyses ─────────────────────────────────────────────────────────────
@@ -216,6 +222,8 @@ def compliance_table(rows: List[dict]) -> List[dict]:
             d["trunc"] += 1
         if r.get("hidden_reasoning_chars", 0) > 0:
             d["hidden"] += 1
+        if r.get("reasoning_promoted"):
+            continue  # visible text is really hidden reasoning; not a compliance signal
         script = CONDITIONS.get(r["condition"], {}).get("script")
         ratio = script_ratio(reasoning_part(r.get("full_response", "")), script)
         if ratio is not None:

@@ -184,5 +184,3 @@ figures/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
-# Notebook output
-figures/
