@@ -294,3 +294,47 @@ def test_cell_aborts_after_consecutive_errors(tmp_path, monkeypatch):
         asyncio.run(rx.run_cell("mock", resolved, "english", samples, 0, tmp_path, asyncio.Semaphore(2)))
     kept = rx.read_existing(rx.cell_path(tmp_path, "mock", "english", 0))
     assert 3 <= len(kept) < 20
+
+
+# ── rate limiting ────────────────────────────────────────────────────────
+
+def test_rate_limiter_spaces_calls_beyond_the_window():
+    import time as _t
+    from providers import RateLimiter
+
+    async def drive():
+        lim = RateLimiter(rpm=3)
+        lim._times.extend([_t.monotonic() - 59.9] * 3)  # window already full
+        t0 = _t.monotonic()
+        await lim.acquire()
+        return _t.monotonic() - t0
+
+    waited = asyncio.run(drive())
+    assert waited > 0.02, "acquire should wait for the window to free up"
+
+
+def test_rate_limiter_allows_burst_within_limit():
+    from providers import RateLimiter
+
+    async def drive():
+        lim = RateLimiter(rpm=5)
+        for _ in range(5):
+            await lim.acquire()
+        return len(lim._times)
+
+    assert asyncio.run(drive()) == 5
+
+
+def test_resolve_model_carries_rpm():
+    import config
+    r = resolve_model(dict(config.MODELS["tokenrouter"], api_key_default="x"))
+    assert r["requests_per_minute"] == 8
+    r2 = resolve_model({"provider": "mock", "model_id": "mock"})
+    assert r2["requests_per_minute"] is None
+
+
+def test_model_concurrency_cap_is_respected():
+    import config
+    assert config.MODELS["tokenrouter"]["max_concurrency"] == 2
+    src = open("run_experiment.py").read()
+    assert "_semaphore_for" in src and 'MODELS[key].get("max_concurrency")' in src

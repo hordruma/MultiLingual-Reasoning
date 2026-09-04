@@ -375,7 +375,12 @@ async def run_experiment(model_keys: List[str], condition_keys: List[str], task_
         estimate_cost(model_keys, condition_keys, all_samples, num_runs)
         return
 
-    semaphore = asyncio.Semaphore(max_concurrent)
+    # Per-model semaphore: some hosts (free tiers especially) reject parallel
+    # requests with a hard concurrency error, so a model may cap itself.
+    def _semaphore_for(key: str) -> Tuple[asyncio.Semaphore, int]:
+        cap = MODELS[key].get("max_concurrency")
+        n = min(max_concurrent, cap) if cap else max_concurrent
+        return asyncio.Semaphore(n), n
     summary_file = results_dir / "experiment_summary.json"
     all_summaries: List[dict] = []
     start = time.monotonic()
@@ -401,7 +406,9 @@ async def run_experiment(model_keys: List[str], condition_keys: List[str], task_
 
     try:
         for model_key in model_keys:
-            print(f"\n── Model: {MODELS[model_key]['display']} ──")
+            semaphore, n_conc = _semaphore_for(model_key)
+            note = f" (concurrency capped at {n_conc})" if n_conc != max_concurrent else ""
+            print(f"\n── Model: {MODELS[model_key]['display']}{note} ──")
             for run_id in range(num_runs):
                 for condition_key in condition_keys:
                     try:

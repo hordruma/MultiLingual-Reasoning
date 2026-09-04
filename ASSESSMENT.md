@@ -222,3 +222,52 @@ by tests (38 now):
   `notebook_*.csv`.
 - `reasoning_part` sliced on an upper-cased offset (wrong for ß/ligatures);
   duplicate `.gitignore` entry.
+
+## Addendum: first live run (2026-09-04)
+
+The pipeline was finally executed against a real API (TokenRouter's free
+`z-ai/glm-5.3-free`), which closed the gaps the sandbox could not reach.
+
+**Verified working end to end.** 58 real samples across english / mandarin /
+no_cot / wildcard on hearsay + abercrombie, **zero API errors**. The
+HuggingFace test-split download works and every task matches the sizes in
+`config.py` exactly (94, 50, 109, 139, 95, 95, 379→200, 3584→200, 66 =
+1048 samples). Labels are all in their configured sets, no answer leakage,
+no empty inputs. `analyze.py` and the notebook both run on the real output
+(11 figures, no errors). Resume correctly skipped completed rows.
+
+**The hidden-reasoning confound is confirmed, and it is total for this
+model.** 100 % of samples returned hidden reasoning. In the mandarin
+condition the *visible* reasoning is 78 % Han characters, but the hidden
+channel is only 13 % — it opens "Let me think through this problem carefully
+in Chinese as instructed" in English. The language manipulation reaches the
+write-up, not the thinking. Any model whose `hidden` rate is high must be
+reported separately; it cannot anchor the study.
+
+**The `no_cot` control is invalid for thinking models.** 16/16 no-CoT
+samples still returned hidden reasoning: the model reasons, just invisibly.
+For such models the control measures "CoT hidden vs CoT shown", not
+"reasoning vs no reasoning".
+
+**New limits found and handled:**
+
+- *Rate limit.* The free tier allows 8 requests/minute. Retries absorbed the
+  429s without losing samples, but a sliding-window `RateLimiter` now spaces
+  calls (`requests_per_minute` per model) instead of burning retry budget.
+- *Concurrency limit.* Above ~2 in flight the gateway returns 503
+  "hard concurrency limit reached". Models may now declare `max_concurrency`
+  and the runner clamps `--concurrency` per model.
+- *Truncation.* At 4096 tokens 12 % of english and 25 % of mandarin answers
+  were cut off, confirming the prediction that non-Latin scripts lose their
+  ANSWER line first. Raised to 8192, which cut it to ~10 % on the most
+  verbose condition (wildcard); unused tokens are not billed.
+
+**Throughput reality:** ~15 min for 48 samples at 8 rpm. One model across all
+19 conditions × 1048 samples is roughly 41 hours on this free tier. Fine for
+a pilot, not for the full matrix — use paid endpoints or a local model for
+that.
+
+**Task-design issue:** the real `unfair_tos` test split is 90 % "Other"
+(180/200 sampled), so its majority baseline is 90 % while it consumes 19 % of
+all samples. It contributes little signal and should be dropped or capped
+lower.

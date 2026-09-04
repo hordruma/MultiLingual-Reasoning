@@ -4,10 +4,11 @@ Does the language a model reasons in change its accuracy on legal
 classification tasks? This repo runs a factorial of reasoning-language
 conditions × models × LegalBench tasks and analyses the results.
 
-State of the project: **prepared, not yet run**. The code has been audited
-and reworked (see [ASSESSMENT.md](ASSESSMENT.md)), tested offline, and is
-set up to run against six cheap cloud models or a local model. No real
-results exist yet.
+State of the project: **audited, and validated against a live API**. The code
+was reworked (see [ASSESSMENT.md](ASSESSMENT.md)) and a first real run
+(GLM-5.3 via TokenRouter, 58 samples, zero errors) confirmed the data
+download, scoring, resume, analysis and notebook all work end to end. No
+full-scale results exist yet.
 
 ## Design
 
@@ -57,6 +58,13 @@ thinking cannot be disabled, so its hidden reasoning is recorded),
 For any aggregator, `python run_experiment.py --remote-models <key>` lists the
 model ids your key can see.
 
+Free tiers carry throughput limits, not just price limits. A model may declare
+`requests_per_minute` and `max_concurrency` in `config.py`; the runner spaces
+its calls and clamps `--concurrency` accordingly. TokenRouter's free GLM-5.3
+is measured at 8 requests/minute and 2 concurrent, which is about **41 hours**
+for one model across the full 19-condition matrix — a pilot budget, not a
+full-run budget.
+
 Prices are from public price lists in early September 2026 and only feed
 `--estimate`; check them before a paid run. Model ids are verified by
 `--smoke-test`, which also reports whether a provider returned hidden
@@ -69,6 +77,12 @@ requested language. Thinking is therefore switched off wherever the API
 allows it. Where it cannot be (GLM-5.3 Flash; Gemini 3.1 can only be turned
 down), the hidden reasoning is stored per sample and its rate is reported so
 those models can be analysed separately or excluded.
+
+This is not hypothetical. In the live GLM-5.3 pilot **100 % of samples
+returned hidden reasoning**, and in the mandarin condition the visible
+reasoning was 78 % Chinese while the hidden channel was 13 % — the model
+thought in English and wrote up in Chinese. For such models the `no_cot`
+control is also invalid: it still reasons, just invisibly.
 
 ### Local models
 
@@ -110,8 +124,9 @@ are excluded. Test sizes are from the LegalBench paper and approximate.
 ```bash
 python -m venv .venv && source .venv/bin/activate   # or --break-system-packages
 pip install -r requirements.txt
+# no pip on the machine? uv works: uv venv .venv && VIRTUAL_ENV=.venv uv pip install -r requirements.txt
 cp .env.template .env      # fill in the keys for the models you will use
-python -m pytest -q        # 38 offline tests, no network needed
+python -m pytest -q        # 42 offline tests, no network needed
 ```
 
 Data comes from two places on first use and is cached under `data/`:

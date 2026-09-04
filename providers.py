@@ -23,6 +23,7 @@ in `LLMResponse.reasoning`, never merged into `content`.
 """
 
 import asyncio
+import collections
 import os
 import random
 import re
@@ -132,6 +133,48 @@ def _describe(exc: Optional[Exception]) -> str:
     return f"{type(exc).__name__}: {exc}"
 
 
+# ── Rate limiting ───────────────────────────────────────────────────────
+# Free tiers cap requests per minute (TokenRouter's free GLM-5.3 allows 8/min).
+# Without a limiter the runner burns its retry budget on 429s, so a model may
+# declare `requests_per_minute` in config and calls are spaced accordingly.
+
+class RateLimiter:
+    """Sliding-window limiter: at most `rpm` acquisitions in any 60 s."""
+
+    def __init__(self, rpm: int):
+        self.rpm = rpm
+        self._times: collections.deque = collections.deque()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self):
+        while True:
+            async with self._lock:
+                now = time.monotonic()
+                while self._times and now - self._times[0] >= 60.0:
+                    self._times.popleft()
+                if len(self._times) < self.rpm:
+                    self._times.append(now)
+                    return
+                wait = 60.0 - (now - self._times[0]) + 0.05
+            await asyncio.sleep(wait)
+
+
+_limiters: dict = {}
+
+
+def get_limiter(key: str, rpm: Optional[int]) -> Optional[RateLimiter]:
+    """One limiter per model key, so all its concurrent calls share the window."""
+    if not rpm:
+        return None
+    if key not in _limiters or _limiters[key].rpm != rpm:
+        _limiters[key] = RateLimiter(rpm)
+    return _limiters[key]
+
+
+def reset_limiters():
+    _limiters.clear()
+
+
 # ── Config resolution ───────────────────────────────────────────────────
 
 _PLACEHOLDER_KEYS = ("sk-ant-...", "sk-...", "AIza...", "...")
@@ -152,6 +195,7 @@ def resolve_model(model_cfg: dict) -> dict:
         # "temperature" key present with None means "omit the field"
         "temperature": model_cfg.get("temperature", "default"),
         "hidden_reasoning": model_cfg.get("hidden_reasoning", "unknown"),
+        "requests_per_minute": model_cfg.get("requests_per_minute"),
     }
 
     if provider == "mock":
@@ -347,6 +391,9 @@ async def call_model(resolved: dict, system: str, user: str,
     fn = PROVIDER_MAP.get(resolved["provider"])
     if fn is None:
         raise ValueError(f"Unknown provider: {resolved['provider']}")
+    limiter = get_limiter(resolved["model_id"], resolved.get("requests_per_minute"))
+    if limiter is not None:
+        await limiter.acquire()
     return await _retry(fn, resolved, system, user, max_tokens, temperature)
 
 

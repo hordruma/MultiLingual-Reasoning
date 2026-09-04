@@ -202,6 +202,12 @@ MODELS = {
         "base_url": "https://api.tokenrouter.com/v1",
         "request_overrides": {"reasoning_effort": "low"},
         "hidden_reasoning": "cannot_disable",
+        # Measured on the free tier 2026-09-04: "Maximum 8 requests within 1
+        # minutes". The runner spaces calls to this instead of burning retries.
+        "requests_per_minute": 8,
+        # The free gateway also rejects parallel requests with
+        # "hard concurrency limit reached" (503) above ~2 in flight.
+        "max_concurrency": 2,
         "price_in": 0.0, "price_out": 0.0,   # free tier; set real prices if that changes
     },
 
@@ -537,7 +543,11 @@ LEGALBENCH_TASKS = {
 MAX_TASKS_PER_BENCHMARK = 200    # samples per LegalBench task (seeded random subset)
 SAMPLE_SEED = 20240901           # fixed seed so every model/condition sees the same subset
 NUM_RUNS = 3                     # repeat each cell N times; use --runs 1 for a cheap pass
-MAX_OUTPUT_TOKENS = 4096         # cap on visible reasoning + answer (hidden thinking, where
-                                 # it cannot be disabled, also counts against this)
+# Cap on visible reasoning + answer. Hidden thinking, where it cannot be
+# disabled, also counts against this: a live GLM-5.3 pilot truncated 12% of
+# English and 25% of Mandarin answers at 4096, so non-Latin scripts lose their
+# ANSWER line first — exactly the confound the study must avoid. 8192 costs
+# nothing extra when unused (billing is on tokens produced).
+MAX_OUTPUT_TOKENS = 8192
 TEMPERATURE = 0.0                # deterministic where the provider allows it
 RESULTS_DIR = "results"
