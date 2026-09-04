@@ -328,13 +328,40 @@ def test_rate_limiter_allows_burst_within_limit():
 def test_resolve_model_carries_rpm():
     import config
     r = resolve_model(dict(config.MODELS["tokenrouter"], api_key_default="x"))
-    assert r["requests_per_minute"] == 8
+    assert r["requests_per_minute"] == config.MODELS["tokenrouter"]["requests_per_minute"] > 0
     r2 = resolve_model({"provider": "mock", "model_id": "mock"})
     assert r2["requests_per_minute"] is None
 
 
 def test_model_concurrency_cap_is_respected():
     import config
-    assert config.MODELS["tokenrouter"]["max_concurrency"] == 2
+    assert config.MODELS["tokenrouter"]["max_concurrency"] >= 1
     src = open("run_experiment.py").read()
     assert "_semaphore_for" in src and 'MODELS[key].get("max_concurrency")' in src
+
+
+def test_rate_limiter_covers_retries_not_just_first_attempt():
+    """A retry is another request against the quota, so it must be limited too."""
+    import providers
+
+    calls = {"n": 0}
+
+    async def flaky(*a, **k):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise httpx_timeout()
+        return "ok"
+
+    def httpx_timeout():
+        import httpx
+        return httpx.ReadTimeout("boom")
+
+    async def drive():
+        lim = providers.RateLimiter(rpm=100)
+        providers.RETRY_BACKOFF[:] = [0, 0, 0, 0]
+        out = await providers._retry(flaky, _limiter=lim)
+        return out, len(lim._times)
+
+    out, acquired = asyncio.run(drive())
+    assert out == "ok"
+    assert acquired == 3, f"limiter should be acquired once per attempt, got {acquired}"

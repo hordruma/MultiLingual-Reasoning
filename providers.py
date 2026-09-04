@@ -104,12 +104,20 @@ def _retry_after(exc: Exception) -> Optional[float]:
 CONNECT_RETRIES = 2                     # unreachable host: one quick retry, then give up
 
 
-async def _retry(coro_fn, *args, **kwargs):
-    """Retry on transient failures only. 4xx auth/validation errors fail fast."""
+async def _retry(coro_fn, *args, _limiter: "Optional[RateLimiter]" = None, **kwargs):
+    """
+    Retry on transient failures only. 4xx auth/validation errors fail fast.
+
+    The rate limiter is acquired before EVERY attempt, not once per call:
+    a retry is another request against the provider's quota, so limiting only
+    the first attempt lets a burst of retries blow straight through the cap.
+    """
     last_err: Optional[Exception] = None
     max_attempts = MAX_RETRIES
     for attempt in range(MAX_RETRIES):
         try:
+            if _limiter is not None:
+                await _limiter.acquire()
             return await coro_fn(*args, **kwargs)
         except Exception as e:  # noqa: BLE001 – we classify below
             last_err = e
@@ -392,9 +400,7 @@ async def call_model(resolved: dict, system: str, user: str,
     if fn is None:
         raise ValueError(f"Unknown provider: {resolved['provider']}")
     limiter = get_limiter(resolved["model_id"], resolved.get("requests_per_minute"))
-    if limiter is not None:
-        await limiter.acquire()
-    return await _retry(fn, resolved, system, user, max_tokens, temperature)
+    return await _retry(fn, resolved, system, user, max_tokens, temperature, _limiter=limiter)
 
 
 async def smoke_test(resolved: dict) -> LLMResponse:

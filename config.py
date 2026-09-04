@@ -204,7 +204,7 @@ MODELS = {
         "hidden_reasoning": "cannot_disable",
         # Measured on the free tier 2026-09-04: "Maximum 8 requests within 1
         # minutes". The runner spaces calls to this instead of burning retries.
-        "requests_per_minute": 8,
+        "requests_per_minute": 7,
         # The free gateway also rejects parallel requests with
         # "hard concurrency limit reached" (503) above ~2 in flight.
         "max_concurrency": 4,
