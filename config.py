@@ -207,7 +207,7 @@ MODELS = {
         "requests_per_minute": 8,
         # The free gateway also rejects parallel requests with
         # "hard concurrency limit reached" (503) above ~2 in flight.
-        "max_concurrency": 2,
+        "max_concurrency": 4,
         "price_in": 0.0, "price_out": 0.0,   # free tier; set real prices if that changes
     },
 
