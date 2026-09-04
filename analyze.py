@@ -66,6 +66,8 @@ def build_cell_frame(rows: Iterable[dict]) -> List[dict]:
             "answer_marker_missing": sum(1 for r in answered if not r.get("answer_marker_found")),
             "predicted_outside_label_set": sum(1 for r in answered if not r.get("predicted_in_label_set", True)),
             "truncated": sum(1 for r in answered if r.get("truncated")),
+            "complete": sum(1 for r in answered if not r.get("truncated")),
+            "correct_complete": sum(1 for r in answered if r["correct"] and not r.get("truncated")),
             "hidden_reasoning": sum(1 for r in answered if r.get("hidden_reasoning_chars", 0) > 0),
             "avg_output_tokens": out_tok / len(answered) if answered else 0.0,
             "total_output_tokens": out_tok,
@@ -158,12 +160,17 @@ def reasoning_part(full_response: str) -> str:
 
 def condition_table(cells: List[dict]) -> List[dict]:
     by = defaultdict(list)
+    comp = defaultdict(lambda: [0, 0])   # [correct_complete, complete]
     fam = {}
     for c in cells:
         by[c["condition"]].append(c["accuracy"])
+        comp[c["condition"]][0] += c.get("correct_complete", 0)
+        comp[c["condition"]][1] += c.get("complete", 0)
         fam[c["condition"]] = c["condition_family"]
     return sorted(
-        [{"condition": k, "family": fam[k], "mean": _mean(v), "std": _std(v), "n_cells": len(v)}
+        [{"condition": k, "family": fam[k], "mean": _mean(v), "std": _std(v), "n_cells": len(v),
+          "mean_complete": (comp[k][0] / comp[k][1]) if comp[k][1] else 0.0,
+          "n_complete": comp[k][1]}
          for k, v in by.items()],
         key=lambda d: -d["mean"],
     )
@@ -334,9 +341,12 @@ def print_report(rows: List[dict], cells: List[dict]):
         print(f"{task:<58} {b['n']:>5} {b['n_labels']:>6} {b['majority_acc']:>9.1%}  ({b['majority_label']})")
 
     print("\n── CONDITION RANKING (mean accuracy over model×task×run cells) ──\n")
-    print(f"{'Rank':<5} {'Condition':<16} {'Family':<15} {'Mean':>7} {'Std':>7} {'Cells':>6}")
+    print("   'excl.trunc' drops truncated answers instead of scoring them wrong -- compare the two")
+    print("   columns: a gap that differs by condition is a truncation artefact, not a language effect.\n")
+    print(f"{'Rank':<5} {'Condition':<16} {'Family':<15} {'Mean':>7} {'Std':>7} {'Cells':>6} {'excl.trunc':>11} {'n':>6}")
     for i, d in enumerate(condition_table(cells), 1):
-        print(f"{i:<5} {d['condition']:<16} {d['family']:<15} {d['mean']:>7.1%} {d['std']:>7.3f} {d['n_cells']:>6}")
+        print(f"{i:<5} {d['condition']:<16} {d['family']:<15} {d['mean']:>7.1%} {d['std']:>7.3f} {d['n_cells']:>6} "
+              f"{d['mean_complete']:>11.1%} {d['n_complete']:>6}")
 
     print("\n── MODEL RANKING ──\n")
     for i, d in enumerate(model_table(cells), 1):

@@ -62,7 +62,7 @@ class ConfigError(Exception):
 MAX_RETRIES = 4
 RETRY_BACKOFF = [2, 5, 15, 30]          # seconds, plus jitter
 RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504, 529}
-TIMEOUT_SECONDS = 300                   # local models can be slow
+TIMEOUT_SECONDS = 900                   # a 32k-token generation is slow; local models too
 
 _client: Optional[httpx.AsyncClient] = None
 

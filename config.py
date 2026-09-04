@@ -544,10 +544,13 @@ MAX_TASKS_PER_BENCHMARK = 200    # samples per LegalBench task (seeded random su
 SAMPLE_SEED = 20240901           # fixed seed so every model/condition sees the same subset
 NUM_RUNS = 3                     # repeat each cell N times; use --runs 1 for a cheap pass
 # Cap on visible reasoning + answer. Hidden thinking, where it cannot be
-# disabled, also counts against this: a live GLM-5.3 pilot truncated 12% of
-# English and 25% of Mandarin answers at 4096, so non-Latin scripts lose their
-# ANSWER line first — exactly the confound the study must avoid. 8192 costs
-# nothing extra when unused (billing is on tokens produced).
-MAX_OUTPUT_TOKENS = 8192
+# disabled, also counts against this. Truncation is not a cosmetic issue for
+# this study: a cut-off answer loses its ANSWER line and scores as wrong, and
+# it hits verbose scripts hardest, biasing the very variable under test.
+# Live GLM-5.3 measurements: 12% (english) / 25% (mandarin) truncated at 4096,
+# 8% (english) at 8192, with p50=1150 but p90=6649 output tokens. The tail is
+# long, so the cap is set far above it. Unused tokens are never billed; the
+# only cost is that a rare long generation needs a longer HTTP timeout.
+MAX_OUTPUT_TOKENS = 32768
 TEMPERATURE = 0.0                # deterministic where the provider allows it
 RESULTS_DIR = "results"

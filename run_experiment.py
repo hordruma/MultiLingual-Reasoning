@@ -178,6 +178,10 @@ def summarize_cell(model_key: str, condition_key: str, run_id: int, rows: List[d
         "correct": correct,
         "accuracy": correct / n if n else 0.0,                 # errors count as wrong
         "accuracy_answered": correct / answered if answered else 0.0,
+        "accuracy_complete": (
+            sum(1 for r in rows if r["correct"] and not r.get("truncated") and not r.get("error"))
+            / max(1, sum(1 for r in rows if not r.get("truncated") and not r.get("error")))
+        ),
         "errors": errors,
         "truncated": truncated,
         "answer_marker_missing": marker_missing,
