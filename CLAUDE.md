@@ -28,7 +28,7 @@ figures/           — Notebook output (gitignored)
 ```bash
 pip install -r requirements.txt
 cp .env.template .env               # fill in keys for the models you will use
-python -m pytest -q                 # 42 offline tests
+python -m pytest -q                 # 46 offline tests
 python run_experiment.py --list
 python run_experiment.py --smoke-test
 python run_experiment.py --estimate --runs 1
@@ -37,7 +37,9 @@ python analyze.py
 ```
 
 ## Key Conventions
-- Temperature 0.0 where accepted (GPT-5.x omits it), 8192 max output tokens; `truncated` is recorded per sample.
+- Temperature 0.0 where accepted (GPT-5.x omits it). NO output cap: `MAX_OUTPUT_TOKENS = None`
+  omits max_tokens so the model stops naturally (a cap truncates verbose scripts hardest and
+  biases the variable under test). `truncated` is still recorded and reported per sample.
 - Free tiers throttle: models may set `requests_per_minute` (sliding-window limiter in
   providers.py) and `max_concurrency` (clamps --concurrency for that model).
 - Hidden thinking is disabled per model via `request_overrides`; any hidden reasoning that

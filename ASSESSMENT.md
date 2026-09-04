@@ -271,3 +271,23 @@ that.
 (180/200 sampled), so its majority baseline is 90 % while it consumes 19 % of
 all samples. It contributes little signal and should be dropped or capped
 lower.
+
+## Addendum: output cap removed entirely
+
+Capping output tokens is unsound for this benchmark. A truncated answer loses
+its ANSWER line and is scored wrong, and truncation falls hardest on verbose
+scripts — the exact variable the study manipulates. Measured on live GLM-5.3:
+12% (english) / 25% (mandarin) truncated at 4096, still 8% (english) at 8192,
+with p50=1150 but p90=6649 output tokens.
+
+`MAX_OUTPUT_TOKENS = None` now omits the `max_tokens` field entirely so the
+model stops when it is done. Verified against TokenRouter that omitting it
+substitutes no small default: an uncapped request ran to natural stop at 8228
+completion tokens. Anthropic requires the field, so that adapter falls back to
+`providers.REQUIRED_MAX_TOKENS_FALLBACK`. The HTTP timeout is 1800s, since
+uncapped generation runs at roughly 36 tokens/s.
+
+`truncated` is still recorded and reported: any row that appears now is the
+model hitting its own hard limit, and the report carries an `excl.trunc`
+accuracy column so residual truncation can never masquerade as a language
+effect.

@@ -19,7 +19,7 @@ full-scale results exist yet.
 | Tasks | 9 closed-label LegalBench tasks (7 Yes/No, one 5-class, one 9-class) |
 | Samples | up to 200 per task, seeded random subset, identical across cells |
 | Runs | `--runs N` (config default 3; use 1 for a first pass) |
-| Decoding | temperature 0 where the API allows it, 4096 output tokens, hidden "thinking" off where the API allows it |
+| Decoding | temperature 0 where the API allows it, **no output cap** (models run to natural stop), hidden "thinking" off where the API allows it |
 
 ### Conditions
 
@@ -126,7 +126,7 @@ python -m venv .venv && source .venv/bin/activate   # or --break-system-packages
 pip install -r requirements.txt
 # no pip on the machine? uv works: uv venv .venv && VIRTUAL_ENV=.venv uv pip install -r requirements.txt
 cp .env.template .env      # fill in the keys for the models you will use
-python -m pytest -q        # 42 offline tests, no network needed
+python -m pytest -q        # 46 offline tests, no network needed
 ```
 
 Data comes from two places on first use and is cached under `data/`:

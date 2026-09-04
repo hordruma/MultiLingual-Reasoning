@@ -543,14 +543,19 @@ LEGALBENCH_TASKS = {
 MAX_TASKS_PER_BENCHMARK = 200    # samples per LegalBench task (seeded random subset)
 SAMPLE_SEED = 20240901           # fixed seed so every model/condition sees the same subset
 NUM_RUNS = 3                     # repeat each cell N times; use --runs 1 for a cheap pass
-# Cap on visible reasoning + answer. Hidden thinking, where it cannot be
-# disabled, also counts against this. Truncation is not a cosmetic issue for
-# this study: a cut-off answer loses its ANSWER line and scores as wrong, and
-# it hits verbose scripts hardest, biasing the very variable under test.
-# Live GLM-5.3 measurements: 12% (english) / 25% (mandarin) truncated at 4096,
-# 8% (english) at 8192, with p50=1150 but p90=6649 output tokens. The tail is
-# long, so the cap is set far above it. Unused tokens are never billed; the
-# only cost is that a rare long generation needs a longer HTTP timeout.
-MAX_OUTPUT_TOKENS = 32768
+# No output cap. Truncation is not a cosmetic issue for this study: a cut-off
+# answer loses its ANSWER line and scores as wrong, and it hits verbose scripts
+# hardest, biasing the very variable the experiment manipulates. Live GLM-5.3
+# measurements: 12% (english) / 25% (mandarin) truncated at 4096 and still 8%
+# (english) at 8192, with p50=1150 but p90=6649 output tokens.
+#
+# None means the max_tokens field is omitted entirely, so the model stops when
+# it is done. Verified against TokenRouter: an uncapped request ran to natural
+# stop at 8228 completion tokens (finish_reason "stop"), i.e. the provider
+# substitutes no small default. Any `truncated` row that still appears is the
+# model hitting its own hard limit and is reported, never silently scored.
+# Providers that require the field (Anthropic) fall back to
+# providers.REQUIRED_MAX_TOKENS_FALLBACK.
+MAX_OUTPUT_TOKENS = None
 TEMPERATURE = 0.0                # deterministic where the provider allows it
 RESULTS_DIR = "results"

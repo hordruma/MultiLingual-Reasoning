@@ -49,6 +49,11 @@ class LLMResponse:
     raw: Optional[dict] = None  # provider-specific payload for debugging
 
 
+# Anthropic's Messages API requires max_tokens, so an uncapped run needs a
+# concrete number there. Well above any observed completion length.
+REQUIRED_MAX_TOKENS_FALLBACK = 32000
+
+
 class ProviderError(Exception):
     """Raised when an API call fails after retries (or is not retryable)."""
 
@@ -62,7 +67,7 @@ class ConfigError(Exception):
 MAX_RETRIES = 4
 RETRY_BACKOFF = [2, 5, 15, 30]          # seconds, plus jitter
 RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504, 529}
-TIMEOUT_SECONDS = 900                   # a 32k-token generation is slow; local models too
+TIMEOUT_SECONDS = 1800                  # uncapped generations are slow (~36 tok/s observed)
 
 _client: Optional[httpx.AsyncClient] = None
 
@@ -265,16 +270,21 @@ def split_reasoning(content: str, reasoning: str = "") -> Tuple[str, str, bool]:
 # ── OpenAI-compatible chat completions ──────────────────────────────────
 
 def build_openai_body(resolved: dict, system: str, user: str,
-                      max_tokens: int, temperature: float) -> dict:
-    """Pure function so the request shape can be unit-tested."""
+                      max_tokens: Optional[int], temperature: float) -> dict:
+    """
+    Pure function so the request shape can be unit-tested.
+    `max_tokens=None` omits the field entirely: the model stops when it is
+    done, so nothing the study measures can be clipped by an arbitrary cap.
+    """
     body = {
         "model": resolved["model_id"],
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        resolved.get("max_tokens_param", "max_tokens"): max_tokens,
     }
+    if max_tokens is not None:
+        body[resolved.get("max_tokens_param", "max_tokens")] = max_tokens
     model_temp = resolved.get("temperature", "default")
     if model_temp == "default":
         body["temperature"] = temperature
@@ -328,7 +338,8 @@ async def _call_anthropic(resolved: dict, system: str, user: str,
     }
     body = {
         "model": resolved["model_id"],
-        "max_tokens": max_tokens,
+        # Anthropic requires this field, so an uncapped run uses the fallback.
+        "max_tokens": REQUIRED_MAX_TOKENS_FALLBACK if max_tokens is None else max_tokens,
         "system": system,
         "messages": [{"role": "user", "content": user}],
     }
@@ -394,7 +405,7 @@ PROVIDER_MAP = {
 
 
 async def call_model(resolved: dict, system: str, user: str,
-                     max_tokens: int = 4096, temperature: float = 0.0) -> LLMResponse:
+                     max_tokens: Optional[int] = None, temperature: float = 0.0) -> LLMResponse:
     """Unified entry point – dispatches to the right provider with retries."""
     fn = PROVIDER_MAP.get(resolved["provider"])
     if fn is None:

@@ -207,6 +207,28 @@ def test_build_body_default_model():
     assert body["messages"][0] == {"role": "system", "content": "sys"}
 
 
+def test_build_body_omits_max_tokens_when_uncapped():
+    """None must drop the field, not send null: a cap would clip the tail."""
+    for param in ("max_tokens", "max_completion_tokens"):
+        resolved = {"model_id": "m", "max_tokens_param": param, "temperature": "default",
+                    "request_overrides": {}}
+        body = build_openai_body(resolved, "s", "u", None, 0.0)
+        assert "max_tokens" not in body and "max_completion_tokens" not in body
+
+
+def test_uncapped_config_is_actually_uncapped():
+    import config
+    assert config.MAX_OUTPUT_TOKENS is None
+
+
+def test_anthropic_body_still_gets_required_max_tokens():
+    """Anthropic rejects a request without max_tokens, so None needs a fallback."""
+    import inspect, providers
+    src = inspect.getsource(providers._call_anthropic)
+    assert "REQUIRED_MAX_TOKENS_FALLBACK if max_tokens is None else max_tokens" in src
+    assert providers.REQUIRED_MAX_TOKENS_FALLBACK > 16000
+
+
 def test_build_body_gpt56_shape():
     resolved = {"model_id": "gpt-5.6-luna", "max_tokens_param": "max_completion_tokens",
                 "temperature": None, "request_overrides": {"reasoning_effort": "none"}}
