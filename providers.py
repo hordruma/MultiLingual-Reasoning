@@ -24,6 +24,7 @@ in `LLMResponse.reasoning`, never merged into `content`.
 
 import asyncio
 import collections
+import json
 import os
 import random
 import re
@@ -67,7 +68,13 @@ class ConfigError(Exception):
 MAX_RETRIES = 4
 RETRY_BACKOFF = [2, 5, 15, 30]          # seconds, plus jitter
 RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504, 529}
-TIMEOUT_SECONDS = 1800                  # uncapped generations are slow (~36 tok/s observed)
+# Streaming makes the read timeout a *gap between chunks*, so a generation may
+# run arbitrarily long (no output cap) while a stalled connection is caught in
+# ~2 min instead of blocking a concurrency slot for the whole call.
+CONNECT_TIMEOUT = 30.0
+READ_TIMEOUT = 120.0          # max silence between streamed chunks
+TOTAL_TIMEOUT = 3600.0        # backstop, mainly for non-streaming providers
+TIMEOUT_SECONDS = TOTAL_TIMEOUT
 
 _client: Optional[httpx.AsyncClient] = None
 
@@ -76,7 +83,8 @@ def _get_client() -> httpx.AsyncClient:
     """One shared connection pool for the whole run."""
     global _client
     if _client is None or _client.is_closed:
-        _client = httpx.AsyncClient(timeout=TIMEOUT_SECONDS)
+        _client = httpx.AsyncClient(timeout=httpx.Timeout(
+            TOTAL_TIMEOUT, connect=CONNECT_TIMEOUT, read=READ_TIMEOUT, write=CONNECT_TIMEOUT))
     return _client
 
 
@@ -209,6 +217,7 @@ def resolve_model(model_cfg: dict) -> dict:
         "temperature": model_cfg.get("temperature", "default"),
         "hidden_reasoning": model_cfg.get("hidden_reasoning", "unknown"),
         "requests_per_minute": model_cfg.get("requests_per_minute"),
+        "stream": model_cfg.get("stream", True),
     }
 
     if provider == "mock":
@@ -294,8 +303,64 @@ def build_openai_body(resolved: dict, system: str, user: str,
     return body
 
 
+async def _call_openai_compat_stream(resolved: dict, system: str, user: str,
+                                     max_tokens, temperature: float) -> LLMResponse:
+    """
+    Streamed chat completion. Preferred because the read timeout then applies
+    between chunks: an uncapped generation can take as long as it needs, while
+    a stalled gateway is caught in seconds instead of holding a concurrency
+    slot for the whole call (which collapsed throughput on a live run).
+    """
+    url = f"{resolved['base_url']}/chat/completions"
+    headers = {"Authorization": f"Bearer {resolved['api_key']}", "content-type": "application/json"}
+    body = build_openai_body(resolved, system, user, max_tokens, temperature)
+    body["stream"] = True
+    body.setdefault("stream_options", {"include_usage": True})
+
+    content_parts, reasoning_parts = [], []
+    finish, usage = "", {}
+    t0 = time.monotonic()
+    async with _get_client().stream("POST", url, headers=headers, json=body) as r:
+        if r.status_code >= 400:
+            await r.aread()          # load the body so the error message is usable
+            r.raise_for_status()
+        async for line in r.aiter_lines():
+            if not line or not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            try:
+                obj = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+            if obj.get("usage"):
+                usage = obj["usage"]
+            for ch in obj.get("choices", []) or []:
+                delta = ch.get("delta") or {}
+                if delta.get("content"):
+                    content_parts.append(delta["content"])
+                rc = delta.get("reasoning_content") or delta.get("reasoning")
+                if rc:
+                    reasoning_parts.append(rc)
+                if ch.get("finish_reason"):
+                    finish = ch["finish_reason"]
+    elapsed = (time.monotonic() - t0) * 1000
+    content, reasoning, promoted = split_reasoning("".join(content_parts), "".join(reasoning_parts))
+    return LLMResponse(
+        model_id=resolved["model_id"], content=content,
+        input_tokens=usage.get("prompt_tokens") or 0,
+        output_tokens=usage.get("completion_tokens") or 0,
+        latency_ms=elapsed, finish_reason=finish,
+        truncated=(finish == "length"), reasoning=reasoning,
+        reasoning_promoted=promoted, raw=None,
+    )
+
+
 async def _call_openai_compat(resolved: dict, system: str, user: str,
                               max_tokens: int, temperature: float) -> LLMResponse:
+    if resolved.get("stream", True):
+        return await _call_openai_compat_stream(resolved, system, user, max_tokens, temperature)
     url = f"{resolved['base_url']}/chat/completions"
     headers = {
         "Authorization": f"Bearer {resolved['api_key']}",

@@ -387,3 +387,28 @@ def test_rate_limiter_covers_retries_not_just_first_attempt():
     out, acquired = asyncio.run(drive())
     assert out == "ok"
     assert acquired == 3, f"limiter should be acquired once per attempt, got {acquired}"
+
+
+def test_streaming_is_default_and_overridable():
+    import config
+    from providers import resolve_model as rm
+    r = rm(dict(config.MODELS["tokenrouter"], api_key_default="x"))
+    assert r["stream"] is True
+    r2 = rm(dict(config.MODELS["tokenrouter"], api_key_default="x", stream=False))
+    assert r2["stream"] is False
+
+
+def test_stream_body_requests_usage():
+    from providers import build_openai_body
+    resolved = {"model_id": "m", "max_tokens_param": "max_tokens", "temperature": "default",
+                "request_overrides": {}}
+    body = build_openai_body(resolved, "s", "u", None, 0.0)
+    body["stream"] = True
+    body.setdefault("stream_options", {"include_usage": True})
+    assert body["stream_options"]["include_usage"] is True and "max_tokens" not in body
+
+
+def test_read_timeout_is_a_chunk_gap_not_a_call_budget():
+    import providers
+    assert providers.READ_TIMEOUT <= 300, "read timeout must catch stalls quickly"
+    assert providers.TOTAL_TIMEOUT >= 1800, "total budget must allow very long generations"
