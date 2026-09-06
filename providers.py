@@ -73,7 +73,14 @@ RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504, 529}
 # ~2 min instead of blocking a concurrency slot for the whole call.
 CONNECT_TIMEOUT = 30.0
 READ_TIMEOUT = 120.0          # max silence between streamed chunks
-TOTAL_TIMEOUT = 3600.0        # backstop, mainly for non-streaming providers
+TOTAL_TIMEOUT = 3600.0        # httpx pool/default; NOT a whole-request deadline
+# httpx has no total-request timeout: a stream that keeps emitting chunks inside
+# READ_TIMEOUT runs forever. One live sample degenerated past 90 minutes and
+# idled the whole run, so the streaming loop enforces its own wall clock.
+# Well above any legitimate completion (longest non-truncated: ~15 min) and above
+# the ~36 min an 80k-token model-limit runaway takes, so only pathological
+# generations are cut -- and they are recorded as truncated, never as answers.
+MAX_REQUEST_SECONDS = 2400.0
 TIMEOUT_SECONDS = TOTAL_TIMEOUT
 
 _client: Optional[httpx.AsyncClient] = None
@@ -336,6 +343,9 @@ async def _call_openai_compat_stream(resolved: dict, system: str, user: str,
                 continue
             if obj.get("usage"):
                 usage = obj["usage"]
+            if time.monotonic() - t0 > MAX_REQUEST_SECONDS:
+                finish = "length"      # degenerate generation: record as truncated
+                break
             for ch in obj.get("choices", []) or []:
                 delta = ch.get("delta") or {}
                 if delta.get("content"):
