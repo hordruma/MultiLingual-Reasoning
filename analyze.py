@@ -385,6 +385,22 @@ def print_report(rows: List[dict], cells: List[dict]):
         print(f"  {d['model']:<16} {d['language']:<9} own Δ={d['own_delta_vs_english']:+.1%}  "
               f"others Δ={d['others_mean_delta']:+.1%}  relative={d['relative_advantage']:+.1%}  → {verdict}")
 
+    print("\n── RUNAWAY (non-terminating) GENERATIONS per condition ──")
+    print("   The model loops in its reasoning channel and never emits an answer.")
+    print("   Length is real benchmark data: no cap or deadline is applied to it.\n")
+    print(f"{'condition':<16} {'rate':>7} {'med tok':>9} {'max tok':>9} {'med min':>8} {'max min':>8}")
+    ra = defaultdict(list)
+    for r in rows:
+        if r.get("truncated"):
+            ra[r["condition"]].append((r.get("output_tokens", 0), r.get("latency_ms", 0) / 60000))
+    tot = defaultdict(int)
+    for r in rows:
+        tot[r["condition"]] += 1
+    for cond in sorted(ra, key=lambda c: -len(ra[c]) / max(1, tot[c])):
+        toks = sorted(x[0] for x in ra[cond]); mins = sorted(x[1] for x in ra[cond])
+        print(f"{cond:<16} {len(ra[cond]) / tot[cond]:>7.1%} {toks[len(toks) // 2]:>9,} {toks[-1]:>9,} "
+              f"{mins[len(mins) // 2]:>8.1f} {mins[-1]:>8.1f}")
+
     print("\n── TOKEN USE per condition (mean output tokens of answered samples) ──\n")
     tok = defaultdict(list)
     for c in cells:

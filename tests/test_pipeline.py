@@ -414,9 +414,10 @@ def test_read_timeout_is_a_chunk_gap_not_a_call_budget():
     assert providers.TOTAL_TIMEOUT >= 1800, "total budget must allow very long generations"
 
 
-def test_streaming_has_a_wall_clock_deadline():
-    """httpx has no total-request timeout; the stream loop must bound itself."""
+def test_streaming_applies_no_wall_clock_cut():
+    """How long a runaway runs is benchmark data; only silence is a fault."""
     import inspect, providers
     src = inspect.getsource(providers._call_openai_compat_stream)
-    assert "MAX_REQUEST_SECONDS" in src and 'finish = "length"' in src
-    assert 900 < providers.MAX_REQUEST_SECONDS < 3600
+    assert "MAX_REQUEST_SECONDS" not in src
+    assert not hasattr(providers, "MAX_REQUEST_SECONDS")
+    assert providers.READ_TIMEOUT <= 300   # stalled connections still die fast
