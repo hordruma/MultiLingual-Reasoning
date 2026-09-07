@@ -28,7 +28,7 @@ figures/           — Notebook output (gitignored)
 ```bash
 pip install -r requirements.txt
 cp .env.template .env               # fill in keys for the models you will use
-python -m pytest -q                 # 46 offline tests
+python -m pytest -q                 # 50 offline tests
 python run_experiment.py --list
 python run_experiment.py --smoke-test
 python run_experiment.py --estimate --runs 1
@@ -52,7 +52,10 @@ python analyze.py
 - Scoring: last `ANSWER:`-style line (also `Answer:`, `**ANSWER:**`, `ANSWER：`,
   `A:`), cleaned, mapped onto the task label set, exact match. Records
   `answer_marker_found`, `predicted_in_label_set`, `truncated`, `error`.
-- Accuracy in summaries counts errors as wrong; `accuracy_answered` excludes them.
+- Accuracy in summaries counts errors as wrong; `accuracy_answered` excludes them and
+  `accuracy_complete` also excludes runaways (non-terminating responses, `truncated=True`).
+- Nothing in analyze.py or the notebook hard-codes model keys or hypothesis verdicts: origin
+  hypotheses derive from `origin_country`, palettes from the data, findings from the tests.
 - Results are appended per sample; rerunning resumes and retries errored rows.
 - The `mock` model is a pipeline test double. Never report its numbers.
 

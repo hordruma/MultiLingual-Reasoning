@@ -291,3 +291,21 @@ uncapped generation runs at roughly 36 tokens/s.
 model hitting its own hard limit, and the report carries an `excl.trunc`
 accuracy column so residual truncation can never masquerade as a language
 effect.
+
+## Current state (end of first full run)
+
+The earlier addenda are an audit trail and mention settings that no longer
+apply (token caps of 4096/8192, a wall-clock deadline). The configuration that
+produced the results is:
+
+- **No output cap** (`MAX_OUTPUT_TOKENS = None`) and **no wall-clock cut**;
+  runaways run to the model's own limit and their length is reported.
+- Streaming with a 120 s chunk-gap timeout, rate limiter and per-model
+  concurrency cap; per-sample resume.
+- Hidden reasoning stored separately and its rate reported per condition.
+
+Analysis code contains no hand-typed model lists or pre-written hypothesis
+verdicts: origin hypotheses derive from `origin_country`, notebook palettes
+from the data, and the findings cell from the exact McNemar tests with
+Bonferroni correction. Test-split sizes in `config.py` are the verified
+HuggingFace sizes.

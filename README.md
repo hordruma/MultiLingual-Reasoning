@@ -102,7 +102,7 @@ lenient answer mapping, so watch the `no-mark` and `off-lbl` columns.
 
 ### Tasks
 
-| Task | Labels | ~test size |
+| Task | Labels | test size |
 |---|---|---|
 | hearsay | Yes/No | 94 |
 | personal_jurisdiction | Yes/No | 50 |
@@ -117,7 +117,7 @@ lenient answer mapping, so watch the `no-mark` and `off-lbl` columns.
 Each task is presented with its official LegalBench `base_prompt.txt`
 (definition + few-shot examples) and the allowed label list. Only the
 `text` field is shown to the model; metadata columns that leak the answer
-are excluded. Test sizes are from the LegalBench paper and approximate.
+are excluded. Test sizes are the HuggingFace test-split sizes, verified on download.
 
 ## Setup
 
@@ -126,7 +126,7 @@ python -m venv .venv && source .venv/bin/activate   # or --break-system-packages
 pip install -r requirements.txt
 # no pip on the machine? uv works: uv venv .venv && VIRTUAL_ENV=.venv uv pip install -r requirements.txt
 cp .env.template .env      # fill in the keys for the models you will use
-python -m pytest -q        # 46 offline tests, no network needed
+python -m pytest -q        # 50 offline tests, no network needed
 ```
 
 Data comes from two places on first use and is cached under `data/`:
@@ -180,13 +180,20 @@ python analyze.py                 # report + CSVs from results/*.jsonl
 jupyter lab legalbench_analysis.ipynb
 ```
 
-The report prints, in order: majority-class baseline per task, condition /
-model / family rankings, a compliance table per model × condition (share of
-letters in the expected script, missing `ANSWER:` marker, prediction outside
-the label set, API errors, truncation, hidden reasoning returned), exact
-McNemar paired tests of wildcard / no_cot / mandarin / pseudocode against
-English on identical samples, a within-model origin-advantage check, and
-token use.
+The report prints, in order: majority-class baseline per task; condition /
+model / family rankings with accuracy both raw and excluding runaways; a
+compliance table per model × condition (share of letters in the expected
+script, missing `ANSWER:` marker, prediction outside the label set, API
+errors, runaways, hidden reasoning returned); an exact McNemar comparison of
+**every** condition against English on identical samples, raw and
+runaway-corrected, with a Bonferroni-corrected significance flag; a
+within-model origin-advantage check derived from each model's
+`origin_country`; runaway rate and length per condition; and token use.
+
+A **runaway** is a response that never terminated (`finish_reason: length`)
+and therefore contains no answer. Raw accuracy scores it as wrong; the
+runaway-excluded view asks how accurate the model was when it did answer.
+Nothing caps or cuts these generations — their length is part of the result.
 
 The notebook reads the same JSONL files. It stops if `results/` is empty; it
 does not generate placeholder data.
@@ -199,7 +206,9 @@ results/
 ├── <model>__<condition>__run<N>.jsonl   # one record per sample: full visible response, hidden reasoning if any
 ├── results_matrix.csv          # (model, condition, task, run) cells
 ├── condition_summary.csv
-└── compliance.csv
+├── compliance.csv
+├── paired_vs_english_excl_runaway.csv
+└── runaways.csv
 figures/                        # written by the notebook
 ```
 

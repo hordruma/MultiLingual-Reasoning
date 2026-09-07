@@ -478,7 +478,8 @@ PILOT_CONDITIONS = [
 # Only closed-label classification tasks are included, because the scorer is
 # exact-match on a label.  `labels` is the closed label set (verified against
 # the LegalBench task prompts); the answer normaliser maps model output onto
-# it.  Test-set sizes are approximate and come from the LegalBench paper.
+# it.  `test_size` is the size of the HuggingFace test split, verified on
+# download 2026-09-04 (the runner caps each task at MAX_TASKS_PER_BENCHMARK).
 #
 # Removed from the original list:
 #   * rule_qa – open-ended free-text answers; exact match cannot score it.
@@ -488,37 +489,37 @@ PILOT_CONDITIONS = [
 LEGALBENCH_TASKS = {
     "hearsay": {
         "labels": ["Yes", "No"],
-        "approx_test_size": 94,
+        "test_size": 94,
         "area": "evidence",
     },
     "personal_jurisdiction": {
         "labels": ["Yes", "No"],
-        "approx_test_size": 50,
+        "test_size": 50,
         "area": "civil procedure",
     },
     "contract_nli_explicit_identification": {
         "labels": ["Yes", "No"],
-        "approx_test_size": 109,
+        "test_size": 109,
         "area": "contract NLI",
     },
     "contract_nli_inclusion_of_verbally_conveyed_information": {
         "labels": ["Yes", "No"],
-        "approx_test_size": 139,
+        "test_size": 139,
         "area": "contract NLI",
     },
     "proa": {
         "labels": ["Yes", "No"],
-        "approx_test_size": 95,
+        "test_size": 95,
         "area": "statutory interpretation",
     },
     "abercrombie": {
         "labels": ["generic", "descriptive", "suggestive", "arbitrary", "fanciful"],
-        "approx_test_size": 95,
+        "test_size": 95,
         "area": "trademark",
     },
     "supply_chain_disclosure_best_practice_verification": {
         "labels": ["Yes", "No"],
-        "approx_test_size": 379,
+        "test_size": 379,
         "area": "disclosure compliance",
     },
     "unfair_tos": {
@@ -527,12 +528,12 @@ LEGALBENCH_TASKS = {
             "Choice of law", "Limitation of liability", "Unilateral termination",
             "Contract by using", "Other",
         ],
-        "approx_test_size": 3584,
+        "test_size": 3584,
         "area": "consumer contracts",
     },
     "learned_hands_benefits": {
         "labels": ["Yes", "No"],
-        "approx_test_size": 66,
+        "test_size": 66,
         "area": "issue spotting",
     },
 }
@@ -543,19 +544,11 @@ LEGALBENCH_TASKS = {
 MAX_TASKS_PER_BENCHMARK = 200    # samples per LegalBench task (seeded random subset)
 SAMPLE_SEED = 20240901           # fixed seed so every model/condition sees the same subset
 NUM_RUNS = 3                     # repeat each cell N times; use --runs 1 for a cheap pass
-# No output cap. Truncation is not a cosmetic issue for this study: a cut-off
-# answer loses its ANSWER line and scores as wrong, and it hits verbose scripts
-# hardest, biasing the very variable the experiment manipulates. Live GLM-5.3
-# measurements: 12% (english) / 25% (mandarin) truncated at 4096 and still 8%
-# (english) at 8192, with p50=1150 but p90=6649 output tokens.
-#
-# None means the max_tokens field is omitted entirely, so the model stops when
-# it is done. Verified against TokenRouter: an uncapped request ran to natural
-# stop at 8228 completion tokens (finish_reason "stop"), i.e. the provider
-# substitutes no small default. Any `truncated` row that still appears is the
-# model hitting its own hard limit and is reported, never silently scored.
-# Providers that require the field (Anthropic) fall back to
-# providers.REQUIRED_MAX_TOKENS_FALLBACK.
+# No output cap: None omits the max_tokens field so the model stops when it
+# is done.  A cap would clip verbose scripts hardest and bias the very variable
+# under test, and how long a runaway runs is itself benchmark data.  Verified
+# the provider substitutes no small default.  Anthropic requires the field and
+# falls back to providers.REQUIRED_MAX_TOKENS_FALLBACK.
 MAX_OUTPUT_TOKENS = None
 TEMPERATURE = 0.0                # deterministic where the provider allows it
 RESULTS_DIR = "results"

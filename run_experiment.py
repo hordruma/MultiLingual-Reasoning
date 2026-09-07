@@ -505,7 +505,7 @@ def list_everything():
         print(f"    {k:<16} {v['family']}")
     print("\nTASKS:")
     for k, v in LEGALBENCH_TASKS.items():
-        print(f"    {k:<58} labels={v['labels']} ~n={v['approx_test_size']}")
+        print(f"    {k:<58} labels={v['labels']} test_n={v['test_size']}")
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────
