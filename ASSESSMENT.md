@@ -412,6 +412,60 @@ sentence and forbids label-only answers). Every row records `prompt_version`;
 Non-reasoning models `gpt-4.1-mini` / `gpt-4.1-nano` were added: no hidden
 channel at all, so their visible chain of thought is the reasoning.
 
-Runs launched: gpt-4.1-mini, prompt v1, all 19 conditions (`results/`);
+Runs launched (results in the next addendum): gpt-4.1-mini, prompt v1, all 19 conditions (`results/`);
 GPT-5.6 Luna reasoning off (temperature 0) and on (low), prompt v2, all 19
 conditions (`results_prompt_v2/`).
+
+## Addendum: results of the corrected runs (2026-09-08)
+
+Two runs completed after the audit, both 19 conditions × 1,048 samples, zero
+errors, temperature 0 where the API allows it:
+
+- **gpt-4.1-mini, prompt v1** (no reasoning mode exists; `results/`,
+  $16.36). Compliance near-perfect: marker in 99.9 % of rows, requested script
+  66–100 %, runaways 0.0–0.1 %.
+- **GPT-5.6 Luna reasoning off (temperature 0) and on (low), prompt v2**
+  (`results_prompt_v2/`, $11.85). Compliance now acceptable: with reasoning
+  off Luna wrote a chain of thought in 58–98 % of rows per condition (English
+  73 %; under v1 it was 4 %), with reasoning on 98–100 %; requested script
+  66–100 % (off) and 77–100 % (on).
+
+Findings, per model, exact McNemar vs English on identical samples, Bonferroni
+over 18:
+
+- **gpt-4.1-mini: the language of the visible chain of thought matters.**
+  9 of 18 conditions are significantly worse than English: Finnish −3.7,
+  Hebrew −3.9, Mandarin −4.8, pseudocode −5.0, formal logic −5.0, Korean −5.5,
+  Japanese −6.3, Arabic −6.4, Hindi −8.2 points. Nothing beats English. This
+  is not a compliance artefact: Hindi rows actually written in Devanagari
+  scored 68.7 % against 54.3 % for the few that drifted into English. The
+  damage concentrates in the label-imbalanced tasks (contract_nli explicit
+  identification 61 % → 29 %).
+- **GPT-5.6 Luna, both modes: no language effect.** No condition differs from
+  English in either variant (all |Δ| ≤ 2.7, none significant). Only `no_cot`
+  is consistently lower (−2.2 off, −2.0 on; pooled −2.1, p = 0.0029, just
+  outside the Bonferroni threshold).
+- **Reasoning on vs off on Luna, done right: no difference.** With prompt v2
+  the on/off deltas are −2.1 to +2.2 points and none is significant. The
+  +3 to +5 point "reasoning-on advantage" of the v1 run was entirely the
+  compliance artefact documented above (v1 reasoning-off did not reason at
+  all). Once Luna writes a visible chain of thought, low-effort hidden
+  reasoning adds nothing measurable.
+- **GLM-5.3 (reasoning cannot be disabled): no language effect on accuracy
+  once runaways are excluded**, but a language effect on *termination*:
+  English 1.8 % runaways vs 3–7 % for every other natural language.
+- **Training-origin hypothesis**: GLM's Mandarin delta vs English is −1.0
+  against −2.3 for the other models (relative +1.3) → not found.
+
+Interpretation, stated carefully: the one model that shows a large language
+effect (gpt-4.1-mini) is also the oldest and weakest. Luna with reasoning off
+is likewise a non-reasoning mode, and shows none. So the data do not support
+"visible reasoning is language-sensitive, hidden reasoning is not"; they are
+equally consistent with newer models simply being more robust to the reasoning
+language. Separating those needs a stronger non-reasoning model
+(gpt-4.1 at ~$45 a run) or an older reasoning model.
+
+Spend on the OpenAI account: about $40 in total (Luna v1 $9.9, probes ~$1,
+gpt-4.1-mini $16.4, Luna v2 $11.9). Reports: `results/report_gpt41mini.txt`,
+`results_prompt_v2/report_luna_v2.txt`, `results/report_all.txt` (v1 rows,
+four models).
