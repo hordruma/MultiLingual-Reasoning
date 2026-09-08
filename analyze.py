@@ -430,7 +430,11 @@ def paired_model_test(rows: List[dict], model_a: str, model_b: str,
 # a model needs no edit here.  "France" -> german is the original study's
 # stated proxy (there is no French condition); it is a weak hypothesis and is
 # labelled as such in the report.
-ORIGIN_LANGUAGE = {"China": "mandarin", "France": "german"}
+ORIGIN_LANGUAGE = {
+    "China": "mandarin", "France": "german",
+    # language-native local models (continued pre-training on the home language)
+    "Japan": "japanese", "South Korea": "korean", "India": "hindi", "Saudi Arabia": "arabic",
+}
 
 
 def origin_hypotheses(models_present) -> List[Tuple[str, str]]:
