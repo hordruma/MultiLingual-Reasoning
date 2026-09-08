@@ -434,7 +434,7 @@ ORIGIN_LANGUAGE = {
     "China": "mandarin", "France": "german",
     # language-native local models (continued pre-training on the home language)
     "Japan": "japanese", "South Korea": "korean", "India": "hindi",
-    "Saudi Arabia": "arabic", "United Arab Emirates": "arabic",
+    "Saudi Arabia": "arabic", "United Arab Emirates": "arabic", "Qatar": "arabic",
 }
 
 

@@ -380,11 +380,13 @@ MODELS = {
         "max_concurrency": 1,
         "price_in": 0.0, "price_out": 0.0,
     },
-    "falcon-h1-arabic-7b": {
+    "fanar-1-9b": {
         "provider": "ollama",
-        "model_id": "hf.co/tiiuae/Falcon-H1-Arabic-7B-Instruct-GGUF:Q4_K_M",
-        "display": "Falcon-H1-Arabic 7B Instruct (TII, Arabic, local)",
-        "origin_country": "United Arab Emirates",
+        # Falcon-H1-Arabic's official GGUF is gated on Hugging Face; Fanar (QCRI,
+        # Gemma-2 based, 1T Arabic/English continued pre-training) is open.
+        "model_id": "hf.co/mradermacher/Fanar-1-9B-Instruct-GGUF:Q4_K_M",
+        "display": "Fanar-1 9B Instruct (QCRI, Arabic, local)",
+        "origin_country": "Qatar",
         "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
         "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
         "request_overrides": {},
