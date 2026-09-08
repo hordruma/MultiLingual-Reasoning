@@ -469,3 +469,43 @@ Spend on the OpenAI account: about $40 in total (Luna v1 $9.9, probes ~$1,
 gpt-4.1-mini $16.4, Luna v2 $11.9). Reports: `results/report_gpt41mini.txt`,
 `results_prompt_v2/report_luna_v2.txt`, `results/report_all.txt` (v1 rows,
 four models).
+
+## Addendum: language-native local models (2026-09-08)
+
+Ollama 0.33.3 installed in user space (no root) on the RTX 5060 laptop (8 GB
+VRAM), 16k context.  Because Ollama's OpenAI-compatible endpoint ignores
+`think` (verified: `think: false` still produced 8–14k characters of hidden
+reasoning on qwen3.5:9b) and cannot set `num_ctx`, local models use a native
+`/api/chat` provider (`provider: "ollama"`), which honours the thinking toggle
+and streams hidden reasoning separately.  Local models carry an output ceiling
+equal to the context window (16,384 tokens): past it Ollama shifts context and
+emits garbage (Nanda produced two 81,920-token runaways of 48 minutes each
+before the ceiling existed).  Small `--max-samples` subsets are now nested
+inside the canonical 200-per-task subset, so a 50-per-task local run scores
+samples the cloud models also scored.
+
+Probed on real prompts (2 samples × English, home language, no_cot):
+
+| model | home | speed | verdict |
+|---|---|---|---|
+| Qwen3.5 9B (Alibaba) | Mandarin | 54 tok/s; thinking off ≈10 s/call, on ≈50 s | usable; Mandarin CoT 67 % under prompt v2 (0–44 % under v1); thinking toggle works natively |
+| Llama-3.1-Swallow 8B v0.5 (Tokyo Tech) | Japanese | 50 tok/s | usable under v2 only (Japanese 39–71 %; English under v1) |
+| EXAONE 3.5 7.8B (LG) | Korean | 60 tok/s | runs, but reasons in English under both prompt versions (0 % Hangul); kept as a compliance data point |
+| Llama-3-Nanda 10B (MBZUAI) | Hindi | 38 tok/s | unusable: raw GGUF has no chat template; with a ChatML template it still echoes the prompt and gives no marker |
+| ALLaM 7B preview (SDAIA) | Arabic | – | unusable: empty outputs, `<\|im` leaks, no marker |
+| Sarvam-M 24B (Sarvam AI) | Hindi | 4 tok/s (spills to RAM) | unusable: 2–6 min per call, reasons in English for Hindi, ignores no_cot |
+| Fanar-1 9B (QCRI) | Arabic | 8 tok/s | reasons in English for Arabic (0 %), runaways; dropped |
+| Falcon-H1-Arabic 7B (TII) | Arabic | – | official GGUF is gated on Hugging Face; not tried |
+
+Pattern worth stating: every small language-native fine-tune except Qwen and
+Swallow reasons in English on an English-language task even when the
+instruction is written in its home language.  A within-model home-language
+test on those models would need the task text translated, which is a different
+experiment.
+
+Run in progress (`run_local_native.sh`, `results_prompt_v2/`): Qwen3.5 9B
+thinking off, Swallow, EXAONE on the same 7 conditions (English, no_cot,
+Mandarin, Japanese, Korean, Hindi, Arabic), then Qwen3.5 thinking on
+(English, no_cot, Mandarin); 50 samples per task, prompt v2, temperature 0,
+one generation at a time.  GPT-5.6 Luna v2 in the same directory is the
+non-native comparison under an identical prompt.
