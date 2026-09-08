@@ -56,7 +56,9 @@ MODELS = {
         "base_url": "https://api.openai.com/v1",
         "request_overrides": {"reasoning_effort": "none"},
         "max_tokens_param": "max_completion_tokens",
-        "temperature": None,            # GPT-5.x rejects temperature
+        # With reasoning_effort "none" GPT-5.x accepts temperature (verified
+        # 2026-09-08); with reasoning on it rejects anything but the default 1.
+        "temperature": 0.0,
         "hidden_reasoning": "off",
         "price_in": 0.20, "price_out": 1.20,
     },
@@ -73,7 +75,7 @@ MODELS = {
         "base_url": "https://api.openai.com/v1",
         "request_overrides": {"reasoning_effort": "low"},   # small budget: cheapest non-zero effort
         "max_tokens_param": "max_completion_tokens",
-        "temperature": None,
+        "temperature": None,            # reasoning on: only the default temperature is accepted
         "hidden_reasoning": "on",
         "price_in": 0.20, "price_out": 1.20,
     },
