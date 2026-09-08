@@ -22,6 +22,8 @@ from providers import resolve_model, build_openai_body, split_reasoning, ConfigE
 # ── extract_answer ───────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("text, expected, marker", [
+    ("因此答案为 No。</think>ANSWER: No", "No", True),
+    ("reasoning</think>\n\nANSWER: Yes", "Yes", True),
     ("reasoning...\nANSWER: Yes", "Yes", True),
     ("reasoning...\nAnswer: no.", "no", True),
     ("**ANSWER:** **Yes**", "Yes", True),

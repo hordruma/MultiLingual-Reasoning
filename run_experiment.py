@@ -83,8 +83,10 @@ def extract_answer(response_text: str) -> Tuple[str, bool]:
     Return (answer, marker_found).  Looks for the last "ANSWER: x" line
     (also accepts "Answer:", "**ANSWER:**", full-width colon, "A:").
     Falls back to the last non-empty line when no marker is present.
+    A stray ``</think>`` in the visible content (the endpoint sometimes leaks
+    the close tag right before the answer) is treated as a line break.
     """
-    text = response_text or ""
+    text = (response_text or "").replace("</think>", "\n")
     matches = _ANSWER_RE.findall(text)
     if matches:
         return clean_answer(matches[-1]), True

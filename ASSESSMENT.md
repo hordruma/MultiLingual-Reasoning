@@ -309,3 +309,27 @@ verdicts: origin hypotheses derive from `origin_country`, notebook palettes
 from the data, and the findings cell from the exact McNemar tests with
 Bonferroni correction. Test-split sizes in `config.py` are the verified
 HuggingFace sizes.
+
+## Addendum: "reasoning off" on GLM-5.3 (TokenRouter) is not available
+
+The plan was to rerun a subset with thinking disabled to separate the visible
+chain of thought from the hidden one. Probed against the real endpoint:
+
+- `thinking.type=disabled` → HTTP 400 `"GLM-5.3 does not support disabling
+  thinking"` on 5 of 7 identical requests; the other 2 returned 200 with no
+  hidden channel but the same reasoning emitted as visible content, ending in
+  a stray `</think>` right before `ANSWER:` (the gateway routes to more than
+  one upstream and they disagree).
+- `reasoning_effort=none`, `reasoning.enabled=false`, `enable_thinking=false`
+  → accepted, but hidden reasoning still returned (286–431 chars).
+
+So there is no thinking-off condition for this model; the `no_cot` control is
+"no *visible* reasoning" only (hidden reasoning present in 99.9% of rows) and is
+reported as such. A genuine thinking-off comparison needs a model whose
+provider honours the toggle (e.g. DeepSeek V4 Flash, or a local Qwen3 with
+`think=false`), which is a between-model comparison, not within-model.
+
+Side finding: 54 of 19,912 rows in the main run carry a stray `</think>` in the
+visible content (28 of them runaways). `extract_answer` now treats it as a line
+break; rescoring every stored row with the fixed extractor changed the
+`answer_marker_found` flag on 10 rows and no `correct` value.
