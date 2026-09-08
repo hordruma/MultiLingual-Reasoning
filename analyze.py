@@ -283,7 +283,7 @@ def paired_vs_baseline(rows: List[dict], baseline: str = "english",
     for r in rows:
         if r.get("error") or (drop_truncated and r.get("truncated")):
             continue
-        by_cond[r["condition"]][(r["task"], r["idx"], r["run_id"])] = bool(r["correct"])
+        by_cond[r["condition"]][(r["model"], r["task"], r["idx"], r["run_id"])] = bool(r["correct"])
     base = by_cond.get(baseline, {})
     out = []
     others = [c for c in by_cond if c != baseline]
@@ -330,7 +330,7 @@ def paired_condition_test(rows: List[dict], cond_a: str, cond_b: str) -> List[di
     for r in rows:
         if r.get("error"):
             continue
-        key = (r["task"], r["idx"], r["run_id"])
+        key = (r["model"], r["task"], r["idx"], r["run_id"])
         if r["condition"] == cond_a:
             by_model[r["model"]]["a"][key] = bool(r["correct"])
         elif r["condition"] == cond_b:
@@ -363,6 +363,62 @@ def paired_condition_test(rows: List[dict], cond_a: str, cond_b: str) -> List[di
         })
     return results
 
+
+
+def thinking_pairs(models_present) -> List[Tuple[str, str]]:
+    """
+    (reasoning-off key, reasoning-on key) pairs: two MODELS entries that hit the
+    same model_id with hidden_reasoning "off" and "on".  Derived from config so
+    the on/off comparison is never hand-typed here.
+    """
+    from config import MODELS
+    present = [m for m in models_present if m in MODELS]
+    pairs = []
+    for off in present:
+        if MODELS[off].get("hidden_reasoning") != "off":
+            continue
+        for on in present:
+            if on != off and MODELS[on].get("hidden_reasoning") == "on" \
+                    and MODELS[on]["model_id"] == MODELS[off]["model_id"]:
+                pairs.append((off, on))
+    return pairs
+
+
+def paired_model_test(rows: List[dict], model_a: str, model_b: str,
+                      drop_truncated: bool = False) -> List[dict]:
+    """
+    Per condition: exact-McNemar comparison of model_b against model_a on
+    identical (task, idx, run) samples.  Used for the thinking-on (b) vs
+    thinking-off (a) comparison of the same underlying model.  Bonferroni over
+    the number of conditions compared.
+    """
+    by_cond = defaultdict(lambda: {"a": {}, "b": {}})
+    for r in rows:
+        if r.get("error") or (drop_truncated and r.get("truncated")):
+            continue
+        if r["model"] not in (model_a, model_b):
+            continue
+        side = "a" if r["model"] == model_a else "b"
+        by_cond[r["condition"]][side][(r["task"], r["idx"], r["run_id"])] = bool(r["correct"])
+    conds = [c for c, d in by_cond.items() if set(d["a"]) & set(d["b"])]
+    alpha = 0.05 / max(1, len(conds))
+    out = []
+    for c in sorted(conds):
+        d = by_cond[c]
+        shared = set(d["a"]) & set(d["b"])
+        b = sum(1 for k in shared if d["a"][k] and not d["b"][k])
+        cc = sum(1 for k in shared if not d["a"][k] and d["b"][k])
+        a_ok = sum(d["a"][k] for k in shared)
+        b_ok = sum(d["b"][k] for k in shared)
+        p = mcnemar_exact(b, cc)
+        out.append({
+            "condition": c, "model_off": model_a, "model_on": model_b, "n_pairs": len(shared),
+            "acc_off": a_ok / len(shared), "acc_on": b_ok / len(shared),
+            "delta_on_minus_off": (b_ok - a_ok) / len(shared),
+            "discordant_off_wins": b, "discordant_on_wins": cc,
+            "p_mcnemar": p, "alpha_bonferroni": alpha, "significant_bonferroni": p < alpha,
+        })
+    return out
 
 # Which reasoning-language condition a model's training-data origin would
 # favour.  Derived from MODELS[*]["origin_country"] at analysis time so adding
@@ -464,6 +520,22 @@ def print_report(rows: List[dict], cells: List[dict]):
             rs = f"{r['delta']:>+8.1%} {r['p_mcnemar']:>7.4f}{'*' if r['significant_bonferroni'] else ' '}" if r else f"{'—':>8} {'—':>8}"
             print(f"{c:<16} {e['n_pairs']:>6} {rs}   {e['delta']:>+15.1%} {e['p_mcnemar']:>7.4f}{'*' if e['significant_bonferroni'] else ' '}")
 
+    for off, on in thinking_pairs({r["model"] for r in rows}):
+        raw = {d["condition"]: d for d in paired_model_test(rows, off, on, drop_truncated=False)}
+        exc = {d["condition"]: d for d in paired_model_test(rows, off, on, drop_truncated=True)}
+        if not exc:
+            continue
+        alpha = next(iter(exc.values()))["alpha_bonferroni"]
+        print(f"\n── HIDDEN REASONING ON vs OFF: {on} vs {off} (same samples, exact McNemar) ──")
+        print(f"   Δ = accuracy(on) − accuracy(off).  * = significant after Bonferroni for "
+              f"{len(exc)} conditions (alpha={alpha:.4f})\n")
+        print(f"{'Condition':<16} {'pairs':>6} {'acc off':>8} {'acc on':>8} {'raw Δ':>8} {'p':>8}   {'excl.runaway Δ':>15} {'p':>8}")
+        for c in sorted(exc, key=lambda k: exc[k]["delta_on_minus_off"], reverse=True):
+            r, e = raw.get(c), exc[c]
+            rs = f"{r['delta_on_minus_off']:>+8.1%} {r['p_mcnemar']:>7.4f}{'*' if r['significant_bonferroni'] else ' '}" if r else f"{'—':>8} {'—':>8}"
+            print(f"{c:<16} {e['n_pairs']:>6} {e['acc_off']:>8.1%} {e['acc_on']:>8.1%} {rs}   "
+                  f"{e['delta_on_minus_off']:>+15.1%} {e['p_mcnemar']:>7.4f}{'*' if e['significant_bonferroni'] else ' '}")
+
     print("\n── TRAINING-DATA ORIGIN ADVANTAGE (within-model delta vs english) ──\n")
     oa = origin_advantage(cells)
     if not oa:
@@ -513,10 +585,15 @@ def export_csv(records: List[dict], path: Path):
 def main():
     parser = argparse.ArgumentParser(description="Analyze experiment results")
     parser.add_argument("--results-dir", type=str, default="results")
+    parser.add_argument("--models", type=str, default=None,
+                        help="comma-separated model keys to report on (default: all in results-dir)")
     args = parser.parse_args()
     results_dir = Path(args.results_dir)
 
     rows = load_sample_rows(results_dir)
+    if args.models:
+        keep = {m.strip() for m in args.models.split(",") if m.strip()}
+        rows = [r for r in rows if r["model"] in keep]
     if not rows:
         raise SystemExit(f"No per-sample results in {results_dir}/ (expected <model>__<condition>__runN.jsonl files)")
     cells = build_cell_frame(rows)
@@ -526,6 +603,9 @@ def main():
     export_csv(compliance_table(rows), results_dir / "compliance.csv")
     export_csv(paired_vs_baseline(rows, "english", drop_truncated=True), results_dir / "paired_vs_english_excl_runaway.csv")
     export_csv(runaway_table(rows), results_dir / "runaways.csv")
+    for off, on in thinking_pairs({r["model"] for r in rows}):
+        export_csv(paired_model_test(rows, off, on, drop_truncated=True),
+                   results_dir / f"thinking_on_vs_off__{on}.csv")
 
 
 if __name__ == "__main__":

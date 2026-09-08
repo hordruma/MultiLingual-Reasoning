@@ -440,3 +440,26 @@ def test_luna_think_pair_shares_model_but_toggles_reasoning():
     assert a["request_overrides"]["reasoning_effort"] == "none"
     assert b["request_overrides"]["reasoning_effort"] != "none"
     assert a["hidden_reasoning"] == "off" and b["hidden_reasoning"] == "on"
+
+
+def test_thinking_pairs_derived_from_config():
+    import analyze
+    assert analyze.thinking_pairs({"gpt-5.6-luna", "gpt-5.6-luna-think", "tokenrouter"}) == [("gpt-5.6-luna", "gpt-5.6-luna-think")]
+    assert analyze.thinking_pairs({"gpt-5.6-luna", "tokenrouter"}) == []
+
+
+def test_paired_model_test_mcnemar_and_runaway_exclusion():
+    import analyze
+    def row(model, idx, correct, truncated=False):
+        return {"model": model, "condition": "english", "task": "t", "idx": idx, "run_id": 0,
+                "correct": correct, "truncated": truncated, "error": None}
+    rows = []
+    for i in range(10):  # off wrong / on right on 8 samples, 1 tie, 1 runaway on the on-side
+        rows.append(row("off", i, i == 9))
+        rows.append(row("on", i, i < 8 or i == 9, truncated=(i == 8)))
+    raw = analyze.paired_model_test(rows, "off", "on")[0]
+    assert raw["n_pairs"] == 10 and raw["discordant_on_wins"] == 8 and raw["discordant_off_wins"] == 0
+    assert raw["p_mcnemar"] < 0.05 and raw["significant_bonferroni"]
+    exc = analyze.paired_model_test(rows, "off", "on", drop_truncated=True)[0]
+    assert exc["n_pairs"] == 9
+    assert abs(exc["delta_on_minus_off"] - 8 / 9) < 1e-9

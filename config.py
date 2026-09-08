@@ -66,12 +66,12 @@ MODELS = {
     "gpt-5.6-luna-think": {
         "provider": "openai_compat",
         "model_id": "gpt-5.6-luna",
-        "display": "GPT-5.6 Luna, reasoning on (OpenAI)",
+        "display": "GPT-5.6 Luna, reasoning on/low (OpenAI)",
         "origin_country": "USA",
         "api_key_env": "OPENAI_API_KEY",
         "base_url_env": "OPENAI_BASE_URL",
         "base_url": "https://api.openai.com/v1",
-        "request_overrides": {"reasoning_effort": "medium"},
+        "request_overrides": {"reasoning_effort": "low"},   # small budget: cheapest non-zero effort
         "max_tokens_param": "max_completion_tokens",
         "temperature": None,
         "hidden_reasoning": "on",
