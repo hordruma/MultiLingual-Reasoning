@@ -27,6 +27,11 @@ from config import MODELS, CONDITIONS, LEGALBENCH_TASKS
 # ── Loading ──────────────────────────────────────────────────────────────
 
 
+def prompt_version_of(row: dict) -> int:
+    """Rows written before the field existed were all made with prompt version 1."""
+    return int(row.get("prompt_version") or 1)
+
+
 def has_hidden_reasoning(row: dict) -> bool:
     """Hidden reasoning came back either as text (reasoning_content) or only as a
     token count in usage (OpenAI-style providers never return the text)."""
@@ -587,6 +592,8 @@ def main():
     parser.add_argument("--results-dir", type=str, default="results")
     parser.add_argument("--models", type=str, default=None,
                         help="comma-separated model keys to report on (default: all in results-dir)")
+    parser.add_argument("--prompt-version", type=int, default=None,
+                        help="only rows made with this prompt wording (rows without the field are version 1)")
     parser.add_argument("--out-dir", type=str, default=None,
                         help="where to write the CSVs (default: results-dir); use with --models to keep "
                              "reports for different model sets apart")
@@ -599,6 +606,12 @@ def main():
     if args.models:
         keep = {m.strip() for m in args.models.split(",") if m.strip()}
         rows = [r for r in rows if r["model"] in keep]
+    if args.prompt_version is not None:
+        rows = [r for r in rows if prompt_version_of(r) == args.prompt_version]
+    versions = sorted({prompt_version_of(r) for r in rows})
+    if len(versions) > 1:
+        print(f"WARNING: rows from {len(versions)} prompt versions {versions} are pooled in this report; "
+              f"pass --prompt-version N to keep them apart.\n")
     if not rows:
         raise SystemExit(f"No per-sample results in {results_dir}/ (expected <model>__<condition>__runN.jsonl files)")
     cells = build_cell_frame(rows)

@@ -482,3 +482,8 @@ def test_prompt_versions(monkeypatch):
     assert "must still be in English" not in v2_cot
     assert "do NOT answer with the label alone" in v2_cot and "labels are English words" in v2_cot
     assert "label alone" not in v2_nocot and "with no reasoning" in v2_nocot
+
+
+def test_prompt_version_of_defaults_to_1():
+    assert analyze.prompt_version_of({}) == 1
+    assert analyze.prompt_version_of({"prompt_version": 2}) == 2
