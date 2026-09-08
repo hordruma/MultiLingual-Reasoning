@@ -177,6 +177,34 @@ def render_prompt(base_prompt: str, row: dict) -> str:
 
 # ── Public API ────────────────────────────────────────────────────────────
 
+# Size of the canonical per-task subset every cloud run used.  Smaller subsets
+# are drawn from inside it (and are nested in each other), so a cheap local run
+# with --max-samples 50 scores the same samples the cloud models scored.
+CANONICAL_SUBSET = 200
+
+
+def select_indices(n: int, max_samples: int, seed: int) -> List[int]:
+    """
+    Seeded, sorted row indices for a task of n rows.
+      - max_samples >= CANONICAL_SUBSET: the canonical seeded subset (unchanged
+        since the first run); a larger request over a bigger task falls back to
+        a plain seeded sample.
+      - max_samples <  CANONICAL_SUBSET: a seeded prefix of a shuffle of the
+        canonical subset, so 30 ⊂ 50 ⊂ 200 for the same seed.
+    """
+    if n > CANONICAL_SUBSET:
+        base = sorted(random.Random(seed).sample(range(n), CANONICAL_SUBSET))
+    else:
+        base = list(range(n))
+    if max_samples >= len(base):
+        if max_samples > CANONICAL_SUBSET and n > max_samples:
+            return sorted(random.Random(seed).sample(range(n), max_samples))
+        return base
+    order = base[:]
+    random.Random(seed).shuffle(order)
+    return sorted(order[:max_samples])
+
+
 def load_task(task_name: str, task_cfg: dict, max_samples: int = 200,
               seed: int = 0) -> List[LegalBenchSample]:
     """
@@ -197,11 +225,7 @@ def load_task(task_name: str, task_cfg: dict, max_samples: int = 200,
         print(f"  ✗ {task_name}: no answer/label column in {list(rows[0].keys())}")
         return []
 
-    n = len(rows)
-    if n > max_samples:
-        chosen = sorted(random.Random(seed).sample(range(n), max_samples))
-    else:
-        chosen = list(range(n))
+    chosen = select_indices(len(rows), max_samples, seed)
 
     labels_cfg = {l.lower() for l in task_cfg.get("labels", [])}
     samples, bad_labels = [], 0

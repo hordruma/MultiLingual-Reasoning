@@ -487,3 +487,17 @@ def test_prompt_versions(monkeypatch):
 def test_prompt_version_of_defaults_to_1():
     assert analyze.prompt_version_of({}) == 1
     assert analyze.prompt_version_of({"prompt_version": 2}) == 2
+
+
+def test_select_indices_is_nested_and_canonical_subset_unchanged():
+    import random
+    from data_loader import select_indices, CANONICAL_SUBSET
+    seed = 20240901
+    # the 200-subset every cloud run used must be byte-identical to the original formula
+    assert select_indices(3584, 200, seed) == sorted(random.Random(seed).sample(range(3584), 200))
+    assert select_indices(94, 200, seed) == list(range(94))
+    s200, s50, s30 = (set(select_indices(3584, k, seed)) for k in (200, 50, 30))
+    assert len(s50) == 50 and len(s30) == 30 and s30 < s50 < s200
+    small50 = set(select_indices(94, 50, seed))
+    assert len(small50) == 50 and small50 < set(range(94))
+    assert select_indices(94, 50, seed) == select_indices(94, 50, seed)  # deterministic
