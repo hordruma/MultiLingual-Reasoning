@@ -587,8 +587,13 @@ def main():
     parser.add_argument("--results-dir", type=str, default="results")
     parser.add_argument("--models", type=str, default=None,
                         help="comma-separated model keys to report on (default: all in results-dir)")
+    parser.add_argument("--out-dir", type=str, default=None,
+                        help="where to write the CSVs (default: results-dir); use with --models to keep "
+                             "reports for different model sets apart")
     args = parser.parse_args()
     results_dir = Path(args.results_dir)
+    out_dir = Path(args.out_dir) if args.out_dir else results_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     rows = load_sample_rows(results_dir)
     if args.models:
@@ -598,14 +603,14 @@ def main():
         raise SystemExit(f"No per-sample results in {results_dir}/ (expected <model>__<condition>__runN.jsonl files)")
     cells = build_cell_frame(rows)
     print_report(rows, cells)
-    export_csv(cells, results_dir / "results_matrix.csv")
-    export_csv(condition_table(cells), results_dir / "condition_summary.csv")
-    export_csv(compliance_table(rows), results_dir / "compliance.csv")
-    export_csv(paired_vs_baseline(rows, "english", drop_truncated=True), results_dir / "paired_vs_english_excl_runaway.csv")
-    export_csv(runaway_table(rows), results_dir / "runaways.csv")
+    export_csv(cells, out_dir / "results_matrix.csv")
+    export_csv(condition_table(cells), out_dir / "condition_summary.csv")
+    export_csv(compliance_table(rows), out_dir / "compliance.csv")
+    export_csv(paired_vs_baseline(rows, "english", drop_truncated=True), out_dir / "paired_vs_english_excl_runaway.csv")
+    export_csv(runaway_table(rows), out_dir / "runaways.csv")
     for off, on in thinking_pairs({r["model"] for r in rows}):
         export_csv(paired_model_test(rows, off, on, drop_truncated=True),
-                   results_dir / f"thinking_on_vs_off__{on}.csv")
+                   out_dir / f"thinking_on_vs_off__{on}.csv")
 
 
 if __name__ == "__main__":

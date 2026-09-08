@@ -44,6 +44,7 @@ Every condition asks for the final answer in English on a line of the form
 | Key | Model id | Route | Env var | Thinking | $/1M in / out |
 |---|---|---|---|---|---|
 | gpt-5.6-luna | gpt-5.6-luna | OpenAI | `OPENAI_API_KEY` | off (`reasoning_effort: none`) | 0.20 / 1.20 |
+| gpt-5.6-luna-think | gpt-5.6-luna | OpenAI | `OPENAI_API_KEY` | on (`reasoning_effort: low`) — paired counterpart for the thinking-on/off test | 0.20 / 1.20 |
 | gemini-3.1-flash-lite | gemini-3.1-flash-lite | Google OpenAI-compatible layer | `GEMINI_API_KEY` | lowest setting only | 0.25 / 1.50 |
 | deepseek-v4-flash | deepseek-v4-flash | DeepSeek | `DEEPSEEK_API_KEY` | off | 0.14 / 0.28 |
 | qwen3.7-flash | qwen3.7-flash | Alibaba DashScope (intl) | `QWEN_API_KEY` | off | 0.03 / 0.13 |
@@ -126,7 +127,7 @@ python -m venv .venv && source .venv/bin/activate   # or --break-system-packages
 pip install -r requirements.txt
 # no pip on the machine? uv works: uv venv .venv && VIRTUAL_ENV=.venv uv pip install -r requirements.txt
 cp .env.template .env      # fill in the keys for the models you will use
-python -m pytest -q        # 50 offline tests, no network needed
+python -m pytest -q        # 56 offline tests, no network needed
 ```
 
 Data comes from two places on first use and is cached under `data/`:
@@ -177,6 +178,7 @@ Recommended order for a real run:
 
 ```bash
 python analyze.py                 # report + CSVs from results/*.jsonl
+python analyze.py --models tokenrouter --out-dir results/report_glm   # one model set, CSVs kept apart
 jupyter lab legalbench_analysis.ipynb
 ```
 

@@ -333,3 +333,44 @@ Side finding: 54 of 19,912 rows in the main run carry a stray `</think>` in the
 visible content (28 of them runaways). `extract_answer` now treats it as a line
 break; rescoring every stored row with the fixed extractor changed the
 `answer_marker_found` flag on 10 rows and no `correct` value.
+
+## Addendum: thinking-on vs thinking-off on GPT-5.6 Luna (2026-09-08)
+
+Because GLM-5.3 cannot disable thinking, the on/off comparison was run on
+GPT-5.6 Luna: `gpt-5.6-luna` (`reasoning_effort: none`, hidden reasoning 0% of
+rows) and `gpt-5.6-luna-think` (`reasoning_effort: low`, hidden reasoning in
+100% of CoT rows). Full matrix, 19 conditions × 1,048 samples × both variants
+(39,824 rows in `results/` together with the GLM run), zero errors, zero
+runaways, about $10 of API spend. Hidden reasoning on OpenAI is reported only
+as `usage.completion_tokens_details.reasoning_tokens`; that count is now stored
+per row (`reasoning_tokens`) and counts as hidden reasoning in the reports.
+
+Findings (per-model, exact McNemar on identical samples, Bonferroni):
+
+- **Hidden reasoning on beats off in 12 of 19 conditions** (+3.3 to +5.4
+  points, all significant) and in none is off better. The gain is nil for
+  `no_cot` (+0.5, n.s.): the "do not reason" instruction also suppresses the
+  hidden channel (reasoning tokens present in 32% of rows vs 100% for CoT
+  conditions), so Luna actually honours it, unlike GLM.
+- **With reasoning on, the language of reasoning does not matter**: every
+  condition lands at 79.3–81.1%, none differs from English; only `no_cot` is
+  significantly worse (−3.0). No runaways at all, unlike GLM.
+- **With reasoning off, the "language effect" is a "did it reason at all"
+  effect.** Luna mostly ignores "show your full reasoning" and emits a bare
+  `ANSWER:` line (median visible output 11 characters in 15 of 19 conditions).
+  Conditions that did elicit some visible text scored higher: Hindi (+5.1 vs
+  English, visible CoT in 67% of rows) and Korean (+4.7, 31%) are significant;
+  English itself had visible CoT in 4% of rows. This is the confound the
+  compliance table exists to expose, and it is why the two studies are
+  reported separately (`analyze.py --models …`).
+- **Script compliance is weak on Luna**: asked to reason in Mandarin it wrote
+  Chinese letters in 2% (off) / 36% (on) of visible text; Hebrew 1% / 70%;
+  Russian 1% / 24%. GLM complied at 80–100%. Luna's visible CoT is a
+  post-hoc summary, usually in English, regardless of instruction.
+- **Origin advantage** (now testable with two models): GLM-5.3's Mandarin
+  delta vs English is −1.0 points against −0.5 for Luna, relative −0.5 → not
+  found.
+
+Reports: `results/report_glm.txt`, `results/report_luna.txt`,
+`results/report_all.txt` (CSVs in matching sub-directories). The notebook runs
+clean on the combined data.

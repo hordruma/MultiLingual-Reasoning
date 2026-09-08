@@ -28,7 +28,7 @@ figures/           — Notebook output (gitignored)
 ```bash
 pip install -r requirements.txt
 cp .env.template .env               # fill in keys for the models you will use
-python -m pytest -q                 # 50 offline tests
+python -m pytest -q                 # 56 offline tests
 python run_experiment.py --list
 python run_experiment.py --smoke-test
 python run_experiment.py --estimate --runs 1
@@ -66,7 +66,9 @@ python analyze.py
 - `python run_experiment.py --dry-run` — matrix only
 - `python run_experiment.py --models m1,m2 --conditions c1,c2 --tasks t1 --runs 1 --max-samples 50`
 - `python run_experiment.py --models mock --runs 1` — offline check
-- `python analyze.py --results-dir results/` — report + CSVs
+- `python analyze.py --results-dir results/ [--models a,b] [--out-dir d]` — report + CSVs; a
+  thinking-on/off section appears when two MODELS entries share a `model_id` with
+  `hidden_reasoning` "off" and "on"
 - `jupyter lab legalbench_analysis.ipynb`
 
 ## Testing
