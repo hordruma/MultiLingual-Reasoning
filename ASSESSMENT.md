@@ -374,3 +374,44 @@ Findings (per-model, exact McNemar on identical samples, Bonferroni):
 Reports: `results/report_glm.txt`, `results/report_luna.txt`,
 `results/report_all.txt` (CSVs in matching sub-directories). The notebook runs
 clean on the combined data.
+
+## Addendum: why GPT-5.6 ignored the language instruction (2026-09-08)
+
+The Luna results above looked too tidy, so the runs were audited:
+
+- **The pipeline sent the right request.** The exact body the runner builds
+  (system prompt with the language instruction, user prompt,
+  `reasoning_effort: none`) was posted to OpenAI directly and reproduced the
+  bare `ANSWER:` answers. Stored rows carry the full visible response.
+- **GPT-5.6 obeys the wrong sentence.** Every language instruction in prompt
+  version 1 ends with "Your final answer must still be in English." GPT-5.6
+  reads that as "respond in English" and drops the (Chinese-language)
+  instruction to reason in Chinese. Removing the sentence makes Luna reason in
+  Chinese (82 % of letters, reasoning on); adding "do NOT answer with the label
+  alone" makes it do so with reasoning off as well (100 % of probes).
+- **Not a size effect.** gpt-5.6-sol and gpt-5.6-terra probed with the same
+  prompt: 0 % Chinese, mostly bare labels, identical to Luna.
+- **Other models are fine with the same wording.** GLM-5.3 wrote the requested
+  script in 79–100 % of rows; gpt-4.1-mini wrote a chain of thought on every
+  probe, 80–91 % in the requested script, under both prompt versions.
+- **Temperature.** The config claimed GPT-5.x rejects temperature. That is
+  only true with reasoning on; with `reasoning_effort: none` temperature 0 is
+  accepted. The v1 Luna-off run therefore sampled at the default 1.0 while GLM
+  ran at 0. Fixed (`temperature: 0.0` on `gpt-5.6-luna`). Even at temperature 0
+  Luna flips between "label only" and "reason" on identical input.
+- **Consequence for the v1 Luna study:** with reasoning off, the language
+  conditions differed mainly in how often they provoked any reasoning at all
+  (Hindi 67 % of rows, English 4 %); when Luna did reason in the requested
+  script its accuracy was ~89 %. Those numbers measure instruction compliance,
+  not reasoning language, and are kept only as a documented negative result.
+
+Changes: prompt wording is now versioned (`--prompt-version`, default 1 = the
+original, so all earlier data stays comparable; version 2 removes the English
+sentence and forbids label-only answers). Every row records `prompt_version`;
+`analyze.py` warns when versions are pooled and takes `--prompt-version`.
+Non-reasoning models `gpt-4.1-mini` / `gpt-4.1-nano` were added: no hidden
+channel at all, so their visible chain of thought is the reasoning.
+
+Runs launched: gpt-4.1-mini, prompt v1, all 19 conditions (`results/`);
+GPT-5.6 Luna reasoning off (temperature 0) and on (low), prompt v2, all 19
+conditions (`results_prompt_v2/`).
