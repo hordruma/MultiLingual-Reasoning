@@ -268,7 +268,7 @@ def test_local_model_needs_no_key(monkeypatch):
     import config
     r = resolve_model(config.MODELS["ollama"])
     assert r["api_key"] == "ollama" and r["model_id"] == "qwen3.6:27b"
-    assert r["base_url"] == "http://localhost:11434/v1"
+    assert r["base_url"] == "http://localhost:11434"   # native /api/chat, no /v1
 
 
 # ── review follow-ups ────────────────────────────────────────────────────
@@ -501,3 +501,21 @@ def test_select_indices_is_nested_and_canonical_subset_unchanged():
     small50 = set(select_indices(94, 50, seed))
     assert len(small50) == 50 and small50 < set(range(94))
     assert select_indices(94, 50, seed) == select_indices(94, 50, seed)  # deterministic
+
+
+def test_ollama_native_body_and_resolution(monkeypatch):
+    from config import MODELS
+    import providers
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    r_off = providers.resolve_model(MODELS["qwen3.5-9b"])
+    r_on = providers.resolve_model(MODELS["qwen3.5-9b-think"])
+    r_plain = providers.resolve_model(MODELS["exaone3.5-7.8b"])
+    assert r_off["provider"] == "ollama" and r_off["base_url"] == "http://localhost:11434"
+    b_off = providers.build_ollama_body(r_off, "S", "U", r_off.get("max_output_tokens"), 0.0)
+    b_on = providers.build_ollama_body(r_on, "S", "U", None, 0.0)
+    b_plain = providers.build_ollama_body(r_plain, "S", "U", None, 0.0)
+    assert b_off["think"] is False and b_on["think"] is True and "think" not in b_plain
+    assert b_off["options"] == {"num_predict": 16384, "temperature": 0.0, "num_ctx": 16384}
+    assert b_on["options"]["num_predict"] == -1
+    assert b_off["stream"] is True and [m["role"] for m in b_off["messages"]] == ["system", "user"]
+    assert providers.PROVIDER_MAP["ollama"] is providers._call_ollama

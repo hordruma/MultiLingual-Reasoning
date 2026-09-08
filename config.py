@@ -275,85 +275,97 @@ MODELS = {
     # home language, no_cot, mandarin); see ASSESSMENT.md.  All fit the 8 GB
     # GPU at Q4_K_M.  origin_country feeds analyze.ORIGIN_LANGUAGE.
     "qwen3.5-9b": {
-        "provider": "openai_compat",
+        "provider": "ollama",
         "model_id": "qwen3.5:9b",
         "display": "Qwen3.5 9B, thinking off (Alibaba, local)",
         "origin_country": "China",
         "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
-        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434/v1",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
         "request_overrides": {"think": False},
         "temperature": 0.0,
+        "num_ctx": 16384,
+        "max_output_tokens": 16384,  # = context window: past it Ollama shifts context and emits garbage
         "hidden_reasoning": "off",
         "max_concurrency": 1,   # OLLAMA_NUM_PARALLEL=1: one generation at a time on the 8 GB GPU
         "price_in": 0.0, "price_out": 0.0,
     },
     "qwen3.5-9b-think": {
-        "provider": "openai_compat",
+        "provider": "ollama",
         "model_id": "qwen3.5:9b",
         "display": "Qwen3.5 9B, thinking on (Alibaba, local)",
         "origin_country": "China",
         "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
-        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434/v1",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
         "request_overrides": {"think": True},
         "temperature": 0.0,
+        "num_ctx": 16384,
+        "max_output_tokens": 16384,  # = context window: past it Ollama shifts context and emits garbage
         "hidden_reasoning": "on",
         "max_concurrency": 1,   # OLLAMA_NUM_PARALLEL=1: one generation at a time on the 8 GB GPU
         "price_in": 0.0, "price_out": 0.0,
     },
     "exaone3.5-7.8b": {
-        "provider": "openai_compat",
+        "provider": "ollama",
         "model_id": "exaone3.5:7.8b",
         "display": "EXAONE 3.5 7.8B (LG AI Research, Korean, local)",
         "origin_country": "South Korea",
         "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
-        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434/v1",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
         "request_overrides": {},
         "temperature": 0.0,
+        "num_ctx": 16384,
+        "max_output_tokens": 16384,  # = context window: past it Ollama shifts context and emits garbage
         "hidden_reasoning": "n/a",
         "max_concurrency": 1,   # OLLAMA_NUM_PARALLEL=1: one generation at a time on the 8 GB GPU
         "price_in": 0.0, "price_out": 0.0,
     },
     "swallow-8b": {
-        "provider": "openai_compat",
+        "provider": "ollama",
         "model_id": "hf.co/okamototk/Llama-3.1-Swallow-8B-Instruct-v0.5-gguf:Q4_K_M",
         "display": "Llama-3.1-Swallow 8B v0.5 (Tokyo Tech, Japanese, local)",
         "origin_country": "Japan",
         "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
-        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434/v1",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
         "request_overrides": {},
         "temperature": 0.0,
+        "num_ctx": 16384,
+        "max_output_tokens": 16384,  # = context window: past it Ollama shifts context and emits garbage
         "hidden_reasoning": "n/a",
         "max_concurrency": 1,   # OLLAMA_NUM_PARALLEL=1: one generation at a time on the 8 GB GPU
         "price_in": 0.0, "price_out": 0.0,
     },
     "allam-7b": {
-        "provider": "openai_compat",
+        "provider": "ollama",
         "model_id": "hf.co/bartowski/ALLaM-AI_ALLaM-7B-Instruct-preview-GGUF:Q4_K_M",
         "display": "ALLaM 7B Instruct preview (SDAIA, Arabic, local)",
         "origin_country": "Saudi Arabia",
         "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
-        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434/v1",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
         "request_overrides": {},
         "temperature": 0.0,
+        "num_ctx": 16384,
+        "max_output_tokens": 16384,  # = context window: past it Ollama shifts context and emits garbage
         "hidden_reasoning": "n/a",
         "max_concurrency": 1,   # OLLAMA_NUM_PARALLEL=1: one generation at a time on the 8 GB GPU
         "price_in": 0.0, "price_out": 0.0,
     },
     "nanda-10b": {
-        "provider": "openai_compat",
-        "model_id": "hf.co/mradermacher/Llama-3-Nanda-10B-Chat-GGUF:Q4_K_M",
+        "provider": "ollama",
+        "model_id": "nanda-10b-chatml",   # `ollama create` from the HF GGUF with a ChatML template + stop tokens (the raw GGUF has no template)
         "display": "Llama-3-Nanda 10B Chat (MBZUAI, Hindi, local)",
         "origin_country": "India",
         "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
-        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434/v1",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
         "request_overrides": {},
         "temperature": 0.0,
+        "num_ctx": 16384,
+        "max_output_tokens": 16384,  # = context window: past it Ollama shifts context and emits garbage
         "hidden_reasoning": "n/a",
         "max_concurrency": 1,   # OLLAMA_NUM_PARALLEL=1: one generation at a time on the 8 GB GPU
         "price_in": 0.0, "price_out": 0.0,
     },
     "ollama": {
-        "provider": "openai_compat",
+        "provider": "ollama",
         "model_id": "qwen3.5:9b",
         "model_id_env": "OLLAMA_MODEL",
         "display": "Ollama local (model from OLLAMA_MODEL)",
@@ -361,9 +373,11 @@ MODELS = {
         "api_key_env": "OLLAMA_API_KEY",
         "api_key_default": "ollama",
         "base_url_env": "OLLAMA_BASE_URL",
-        "base_url": "http://localhost:11434/v1",
-        "request_overrides": {"reasoning_effort": "none"},
-        "hidden_reasoning": "off",
+        "base_url": "http://localhost:11434",
+        "request_overrides": {},
+        "num_ctx": 16384,
+        "max_output_tokens": 16384,
+        "hidden_reasoning": "unknown",   # depends on the model behind OLLAMA_MODEL
         "price_in": 0.0, "price_out": 0.0,
     },
     "lmstudio": {

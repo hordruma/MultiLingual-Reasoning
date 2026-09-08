@@ -233,7 +233,21 @@ def resolve_model(model_cfg: dict) -> dict:
         "stream": model_cfg.get("stream", True),
     }
 
+    for k in ("max_output_tokens", "num_ctx"):
+        if k in model_cfg:
+            resolved[k] = model_cfg[k]
+
     if provider == "mock":
+        return resolved
+    if provider == "ollama":
+        base_env = model_cfg.get("base_url_env")
+        base_url = (os.environ.get(base_env) if base_env else None) or model_cfg.get("base_url") \
+            or "http://localhost:11434"
+        resolved["base_url"] = base_url.rstrip("/").removesuffix("/v1")
+        resolved["api_key"] = model_cfg.get("api_key_default", "ollama")   # local: no key needed
+        model_id_env = model_cfg.get("model_id_env")
+        if model_id_env and os.environ.get(model_id_env):
+            resolved["model_id"] = os.environ[model_id_env]
         return resolved
 
     key_env = model_cfg.get("api_key_env")
@@ -477,9 +491,77 @@ async def _call_mock(resolved: dict, system: str, user: str,
 
 # ── Dispatch ────────────────────────────────────────────────────────────
 
+# ── Ollama native API ───────────────────────────────────────────────────
+# Ollama's OpenAI-compatible endpoint ignores `think` (verified 2026-09-08:
+# `think: false` still produced 8–14k characters of hidden reasoning on
+# qwen3.5:9b) and cannot set num_ctx / num_predict, so local models go
+# through /api/chat, which honours all three and streams the hidden
+# reasoning in a separate `thinking` field.
+
+def build_ollama_body(resolved: dict, system: str, user: str, max_tokens, temperature: float) -> dict:
+    options = {"num_predict": -1 if max_tokens is None else int(max_tokens)}
+    model_temp = resolved.get("temperature", "default")
+    if model_temp == "default":
+        options["temperature"] = temperature
+    elif model_temp is not None:
+        options["temperature"] = model_temp
+    if resolved.get("num_ctx"):
+        options["num_ctx"] = int(resolved["num_ctx"])
+    body = {
+        "model": resolved["model_id"],
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        "stream": True,
+        "options": options,
+    }
+    overrides = dict(resolved.get("request_overrides") or {})
+    if "think" in overrides:        # only thinking-capable models accept the field
+        body["think"] = bool(overrides.pop("think"))
+    body.update(overrides)
+    return body
+
+
+async def _call_ollama(resolved: dict, system: str, user: str,
+                       max_tokens, temperature: float) -> LLMResponse:
+    url = f"{resolved['base_url']}/api/chat"
+    body = build_ollama_body(resolved, system, user, max_tokens, temperature)
+    content_parts, thinking_parts = [], []
+    done_reason, in_tok, out_tok = "", 0, 0
+    t0 = time.monotonic()
+    async with _get_client().stream("POST", url, json=body) as r:
+        if r.status_code >= 400:
+            await r.aread()
+            r.raise_for_status()
+        async for line in r.aiter_lines():
+            if not line.strip():
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            msg = obj.get("message") or {}
+            if msg.get("content"):
+                content_parts.append(msg["content"])
+            if msg.get("thinking"):
+                thinking_parts.append(msg["thinking"])
+            if obj.get("done"):
+                done_reason = obj.get("done_reason") or "stop"
+                in_tok = obj.get("prompt_eval_count") or 0
+                out_tok = obj.get("eval_count") or 0
+    elapsed = (time.monotonic() - t0) * 1000
+    content, reasoning, promoted = split_reasoning("".join(content_parts), "".join(thinking_parts))
+    return LLMResponse(
+        model_id=resolved["model_id"], content=content,
+        input_tokens=in_tok, output_tokens=out_tok,
+        latency_ms=elapsed, finish_reason=done_reason,
+        truncated=(done_reason == "length"), reasoning=reasoning,
+        reasoning_promoted=promoted, raw=None,
+    )
+
+
 PROVIDER_MAP = {
     "anthropic":     _call_anthropic,
     "openai_compat": _call_openai_compat,
+    "ollama":        _call_ollama,
     "mock":          _call_mock,
 }
 

@@ -235,7 +235,8 @@ async def _run_sample(resolved: dict, model_key: str, condition_key: str, run_id
     async with semaphore:
         try:
             resp = await call_model(resolved, system, user,
-                                    max_tokens=MAX_OUTPUT_TOKENS, temperature=TEMPERATURE)
+                                    max_tokens=resolved.get("max_output_tokens", MAX_OUTPUT_TOKENS),
+                                    temperature=TEMPERATURE)
         except Exception as e:  # noqa: BLE001
             return {**base, "predicted_raw": "", "predicted": "", "correct": False,
                     "answer_marker_found": False, "predicted_in_label_set": False,
