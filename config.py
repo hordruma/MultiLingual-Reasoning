@@ -364,6 +364,37 @@ MODELS = {
         "max_concurrency": 1,   # OLLAMA_NUM_PARALLEL=1: one generation at a time on the 8 GB GPU
         "price_in": 0.0, "price_out": 0.0,
     },
+    # Second wave (Hindi / Arabic replacements for the unusable Nanda / ALLaM).
+    "sarvam-m": {
+        "provider": "ollama",
+        "model_id": "hf.co/lmstudio-community/sarvam-m-GGUF:Q4_K_M",
+        "display": "Sarvam-M 24B (Sarvam AI, Hindi/Indic, local; spills to RAM on 8 GB)",
+        "origin_country": "India",
+        "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
+        "request_overrides": {},
+        "temperature": 0.0,
+        "num_ctx": 16384,
+        "max_output_tokens": 16384,
+        "hidden_reasoning": "unknown",   # Mistral-Small based; may emit <think> blocks, which split_reasoning separates
+        "max_concurrency": 1,
+        "price_in": 0.0, "price_out": 0.0,
+    },
+    "falcon-h1-arabic-7b": {
+        "provider": "ollama",
+        "model_id": "hf.co/tiiuae/Falcon-H1-Arabic-7B-Instruct-GGUF:Q4_K_M",
+        "display": "Falcon-H1-Arabic 7B Instruct (TII, Arabic, local)",
+        "origin_country": "United Arab Emirates",
+        "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
+        "request_overrides": {},
+        "temperature": 0.0,
+        "num_ctx": 16384,
+        "max_output_tokens": 16384,
+        "hidden_reasoning": "n/a",
+        "max_concurrency": 1,
+        "price_in": 0.0, "price_out": 0.0,
+    },
     "ollama": {
         "provider": "ollama",
         "model_id": "qwen3.5:9b",
