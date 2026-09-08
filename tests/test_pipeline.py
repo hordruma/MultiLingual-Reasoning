@@ -463,3 +463,22 @@ def test_paired_model_test_mcnemar_and_runaway_exclusion():
     exc = analyze.paired_model_test(rows, "off", "on", drop_truncated=True)[0]
     assert exc["n_pairs"] == 9
     assert abs(exc["delta_on_minus_off"] - 8 / 9) < 1e-9
+
+
+def test_prompt_versions(monkeypatch):
+    from config import DEFAULT_PROMPT_VERSION
+    assert DEFAULT_PROMPT_VERSION == 1  # every run so far used v1; changing this silently breaks comparability
+    s = data_loader.LegalBenchSample(task="hearsay", idx=0, text="x", label="Yes", prompt="P {{}}")
+    monkeypatch.setattr(rx, "PROMPT_VERSION", 1)
+    v1_cot, _ = rx.build_prompts(s, "mandarin")
+    v1_nocot, _ = rx.build_prompts(s, "no_cot")
+    assert "Your final answer must still be in English." in v1_cot
+    assert "Your final answer must still be in English." not in v1_nocot
+    assert "follow the reasoning instruction above" in v1_cot and "label alone" not in v1_cot
+    assert "labels are English words" not in v1_cot
+    monkeypatch.setattr(rx, "PROMPT_VERSION", 2)
+    v2_cot, _ = rx.build_prompts(s, "mandarin")
+    v2_nocot, _ = rx.build_prompts(s, "no_cot")
+    assert "must still be in English" not in v2_cot
+    assert "do NOT answer with the label alone" in v2_cot and "labels are English words" in v2_cot
+    assert "label alone" not in v2_nocot and "with no reasoning" in v2_nocot

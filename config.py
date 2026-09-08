@@ -79,6 +79,37 @@ MODELS = {
         "hidden_reasoning": "on",
         "price_in": 0.20, "price_out": 1.20,
     },
+    # Non-reasoning models: no hidden channel at all, so the visible chain of
+    # thought IS the reasoning. The cleanest test of the hypothesis; temperature 0
+    # is honoured. gpt-4.1 itself is ~$45 for a full run, hence mini/nano here.
+    "gpt-4.1-mini": {
+        "provider": "openai_compat",
+        "model_id": "gpt-4.1-mini",
+        "display": "GPT-4.1 mini, no reasoning mode (OpenAI)",
+        "origin_country": "USA",
+        "api_key_env": "OPENAI_API_KEY",
+        "base_url_env": "OPENAI_BASE_URL",
+        "base_url": "https://api.openai.com/v1",
+        "request_overrides": {},
+        "max_tokens_param": "max_completion_tokens",
+        "temperature": 0.0,
+        "hidden_reasoning": "n/a",
+        "price_in": 0.40, "price_out": 1.60,
+    },
+    "gpt-4.1-nano": {
+        "provider": "openai_compat",
+        "model_id": "gpt-4.1-nano",
+        "display": "GPT-4.1 nano, no reasoning mode (OpenAI)",
+        "origin_country": "USA",
+        "api_key_env": "OPENAI_API_KEY",
+        "base_url_env": "OPENAI_BASE_URL",
+        "base_url": "https://api.openai.com/v1",
+        "request_overrides": {},
+        "max_tokens_param": "max_completion_tokens",
+        "temperature": 0.0,
+        "hidden_reasoning": "n/a",
+        "price_in": 0.10, "price_out": 0.40,
+    },
     "gemini-3.1-flash-lite": {
         "provider": "openai_compat",
         "model_id": "gemini-3.1-flash-lite",
@@ -293,6 +324,20 @@ DEFAULT_MODELS = [
 # `script` is used by the compliance heuristic in analyze.py: the dominant
 # Unicode script the reasoning should be written in.  Latin-script languages
 # cannot be told apart cheaply, so they share "latin".
+# Prompt wording version, selectable with `run_experiment.py --prompt-version`
+# and stored on every result row so runs under different prompts are never
+# pooled silently.  The wording itself lives in run_experiment.build_prompts.
+#   1 – original (all runs so far): language instructions end with "Your final
+#       answer must still be in English."; the examples note says only "follow
+#       the reasoning instruction above".  GPT-5.6 (Luna/Sol/Terra) obeys that
+#       English sentence instead of the language instruction and answers with
+#       the bare label; GLM-5.3 and GPT-4.1 comply fine.
+#   2 – that sentence removed (the ANSWER-line rule already fixes the label
+#       language); CoT conditions add "do NOT answer with the label alone".
+#       Verified to make GPT-5.6 reason in the requested language.
+DEFAULT_PROMPT_VERSION = 1
+PROMPT_VERSIONS = (1, 2)
+
 CONDITIONS = {
     # ── Indo-European (4) ──────────────────────────────────────────────────
     "english": {
@@ -309,7 +354,6 @@ CONDITIONS = {
         "instruction": (
             "Denke Schritt für Schritt auf Deutsch über dieses Problem nach. "
             "Zeige deine vollständige Argumentation auf Deutsch, bevor du deine endgültige Antwort gibst. "
-            "Your final answer must still be in English."
         ),
     },
     "russian": {
@@ -318,7 +362,6 @@ CONDITIONS = {
         "instruction": (
             "Продумай эту задачу шаг за шагом на русском языке. "
             "Покажи полный ход рассуждений на русском, прежде чем дать окончательный ответ. "
-            "Your final answer must still be in English."
         ),
     },
     "hindi": {
@@ -327,7 +370,6 @@ CONDITIONS = {
         "instruction": (
             "इस समस्या पर हिंदी में चरणबद्ध तरीके से विचार करें। "
             "अपना पूरा तर्क हिंदी में दिखाएं, फिर अपना अंतिम उत्तर दें। "
-            "Your final answer must still be in English."
         ),
     },
     # ── Sino-Tibetan (1) ──────────────────────────────────────────────────
@@ -336,7 +378,6 @@ CONDITIONS = {
         "script": "han",
         "instruction": (
             "请用中文逐步思考这个问题。用中文展示你的完整推理过程，然后给出最终答案。"
-            "Your final answer must still be in English."
         ),
     },
     # ── Afroasiatic (2) ───────────────────────────────────────────────────
@@ -346,7 +387,6 @@ CONDITIONS = {
         "instruction": (
             "فكّر في هذه المسألة خطوة بخطوة باللغة العربية. "
             "اعرض استدلالك الكامل بالعربية قبل تقديم إجابتك النهائية. "
-            "Your final answer must still be in English."
         ),
     },
     "hebrew": {
@@ -355,7 +395,6 @@ CONDITIONS = {
         "instruction": (
             "חשוב על הבעיה הזו צעד אחר צעד בעברית. "
             "הצג את ההיגיון המלא שלך בעברית לפני שתיתן את תשובתך הסופית. "
-            "Your final answer must still be in English."
         ),
     },
     # ── Japonic (1) ───────────────────────────────────────────────────────
@@ -365,7 +404,6 @@ CONDITIONS = {
         "instruction": (
             "この問題について日本語でステップバイステップで考えてください。"
             "日本語で完全な推論を示してから、最終的な回答を出してください。"
-            "Your final answer must still be in English."
         ),
     },
     # ── Koreanic (1) ──────────────────────────────────────────────────────
@@ -375,7 +413,6 @@ CONDITIONS = {
         "instruction": (
             "이 문제에 대해 한국어로 단계별로 생각해 주세요. "
             "한국어로 완전한 추론을 보여준 다음 최종 답변을 제시하세요. "
-            "Your final answer must still be in English."
         ),
     },
     # ── Turkic (1) ────────────────────────────────────────────────────────
@@ -385,7 +422,6 @@ CONDITIONS = {
         "instruction": (
             "Bu problemi Türkçe olarak adım adım düşünün. "
             "Son cevabınızı vermeden önce tam akıl yürütmenizi Türkçe gösterin. "
-            "Your final answer must still be in English."
         ),
     },
     # ── Uralic (2) ────────────────────────────────────────────────────────
@@ -395,7 +431,6 @@ CONDITIONS = {
         "instruction": (
             "Mieti tätä ongelmaa vaihe vaiheelta suomeksi. "
             "Näytä koko päättelysi suomeksi ennen lopullista vastaustasi. "
-            "Your final answer must still be in English."
         ),
     },
     "hungarian": {
@@ -404,7 +439,6 @@ CONDITIONS = {
         "instruction": (
             "Gondold végig ezt a problémát lépésről lépésre magyarul. "
             "Mutasd be a teljes érvelésedet magyarul, mielőtt megadod a végső válaszodat. "
-            "Your final answer must still be in English."
         ),
     },
     # ── Austronesian (1) ──────────────────────────────────────────────────
@@ -414,7 +448,6 @@ CONDITIONS = {
         "instruction": (
             "Pikirkan masalah ini langkah demi langkah dalam bahasa Indonesia. "
             "Tunjukkan penalaran lengkap Anda dalam bahasa Indonesia sebelum memberikan jawaban akhir. "
-            "Your final answer must still be in English."
         ),
     },
     # ── Austroasiatic (1) ─────────────────────────────────────────────────
@@ -424,7 +457,6 @@ CONDITIONS = {
         "instruction": (
             "Hãy suy nghĩ từng bước về vấn đề này bằng tiếng Việt. "
             "Trình bày toàn bộ lập luận bằng tiếng Việt trước khi đưa ra câu trả lời cuối cùng. "
-            "Your final answer must still be in English."
         ),
     },
     # ── Abstract representations (3) ─────────────────────────────────────
@@ -478,6 +510,7 @@ CONDITIONS = {
     },
     # ── Control ───────────────────────────────────────────────────────────
     "no_cot": {
+        "cot": False,   # the system prompt must not demand written reasoning here
         "family": "Control",
         "script": None,
         "instruction": (
