@@ -368,7 +368,7 @@ MODELS = {
     "sarvam-m": {
         "provider": "ollama",
         "model_id": "hf.co/lmstudio-community/sarvam-m-GGUF:Q4_K_M",
-        "display": "Sarvam-M 24B (Sarvam AI, Hindi/Indic, local; spills to RAM on 8 GB)",
+        "display": "Sarvam-M 24B (Sarvam AI, Hindi/Indic, local; needs ~16 GB VRAM)",
         "origin_country": "India",
         "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
         "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
@@ -396,6 +396,46 @@ MODELS = {
         "hidden_reasoning": "n/a",
         "max_concurrency": 1,
         "price_in": 0.0, "price_out": 0.0,
+    },
+    # ── DGX-class local models (see HANDOFF_LOCAL.md) ─────────────────────
+    # Bigger versions of the same families for a machine with real VRAM.
+    # Verify each tag with `ollama pull` first; HF GGUF repos come and go.
+    "qwen3.6-27b": {
+        "provider": "ollama", "model_id": "qwen3.6:27b",
+        "display": "Qwen3.6 27B, thinking off (Alibaba, local)", "origin_country": "China",
+        "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
+        "request_overrides": {"think": False}, "temperature": 0.0,
+        "num_ctx": 16384, "max_output_tokens": 16384, "hidden_reasoning": "off",
+        "max_concurrency": 4, "price_in": 0.0, "price_out": 0.0,
+    },
+    "qwen3.6-27b-think": {
+        "provider": "ollama", "model_id": "qwen3.6:27b",
+        "display": "Qwen3.6 27B, thinking on (Alibaba, local)", "origin_country": "China",
+        "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
+        "request_overrides": {"think": True}, "temperature": 0.0,
+        "num_ctx": 32768, "max_output_tokens": 32768, "hidden_reasoning": "on",
+        "max_concurrency": 4, "price_in": 0.0, "price_out": 0.0,
+    },
+    "swallow-70b": {
+        "provider": "ollama",
+        "model_id": "hf.co/mmnga/Llama-3.1-Swallow-70B-Instruct-v0.3-gguf:Q4_K_M",
+        "display": "Llama-3.1-Swallow 70B v0.3 (Tokyo Tech, Japanese, local)", "origin_country": "Japan",
+        "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
+        "request_overrides": {}, "temperature": 0.0,
+        "num_ctx": 16384, "max_output_tokens": 16384, "hidden_reasoning": "n/a",
+        "max_concurrency": 4, "price_in": 0.0, "price_out": 0.0,
+    },
+    "exaone3.5-32b": {
+        "provider": "ollama", "model_id": "exaone3.5:32b",
+        "display": "EXAONE 3.5 32B (LG AI Research, Korean, local)", "origin_country": "South Korea",
+        "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
+        "request_overrides": {}, "temperature": 0.0,
+        "num_ctx": 16384, "max_output_tokens": 16384, "hidden_reasoning": "n/a",
+        "max_concurrency": 4, "price_in": 0.0, "price_out": 0.0,
     },
     "ollama": {
         "provider": "ollama",

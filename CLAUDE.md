@@ -18,6 +18,8 @@ analyze.py         — Report + CSVs from per-sample JSONL; stats helpers used b
 legalbench_analysis.ipynb — Charts; reads results/*.jsonl via analyze.py; no synthetic data
 tests/test_pipeline.py    — Offline tests (pytest), no network or keys needed
 ASSESSMENT.md      — Audit findings, what was fixed, what remains unverified
+HANDOFF_LOCAL.md   — How to redo the language-native local-model portion on a bigger machine
+run_local_native.sh — Sequential Ollama runs of the local models (7 shared conditions, prompt v2)
 .env.template      — API key template (never commit .env)
 data/              — Cache of test.jsonl + base_prompt.txt per task (gitignored)
 results/           — Experiment outputs (gitignored)

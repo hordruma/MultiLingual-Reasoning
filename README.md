@@ -138,6 +138,9 @@ hand and where to put it.
 
 ## Running
 
+Local language-native models (Ollama) have their own runbook: see `HANDOFF_LOCAL.md`
+and `run_local_native.sh`.
+
 ```bash
 python run_experiment.py --list                     # models, thinking policy, env vars, tasks
 python run_experiment.py --smoke-test               # one tiny call per default model
