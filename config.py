@@ -28,8 +28,10 @@ Counts (kept honest – see ASSESSMENT.md):
 #   temperature       – model-level override; None omits the field (some
 #                       models reject it)
 #   hidden_reasoning  – "off" (disabled by request_overrides), "minimal"
-#                       (lowest setting the API allows), "cannot_disable", or
-#                       "n/a" (model has no thinking mode). See the note below.
+#                       (lowest setting the API allows), "on" (deliberately
+#                       enabled, for a thinking-on/off comparison),
+#                       "cannot_disable", or "n/a" (model has no thinking
+#                       mode). See the note below.
 #   price_in/out      – USD per 1M tokens, ONLY used by `--estimate`. Taken
 #                       from public price lists in early September 2026;
 #                       verify against the provider before a paid run.
@@ -56,6 +58,23 @@ MODELS = {
         "max_tokens_param": "max_completion_tokens",
         "temperature": None,            # GPT-5.x rejects temperature
         "hidden_reasoning": "off",
+        "price_in": 0.20, "price_out": 1.20,
+    },
+    # Same model with hidden reasoning ON: the paired counterpart for the
+    # thinking-on vs thinking-off comparison (GLM-5.3 cannot disable thinking,
+    # so that comparison has to be made on a model whose provider honours it).
+    "gpt-5.6-luna-think": {
+        "provider": "openai_compat",
+        "model_id": "gpt-5.6-luna",
+        "display": "GPT-5.6 Luna, reasoning on (OpenAI)",
+        "origin_country": "USA",
+        "api_key_env": "OPENAI_API_KEY",
+        "base_url_env": "OPENAI_BASE_URL",
+        "base_url": "https://api.openai.com/v1",
+        "request_overrides": {"reasoning_effort": "medium"},
+        "max_tokens_param": "max_completion_tokens",
+        "temperature": None,
+        "hidden_reasoning": "on",
         "price_in": 0.20, "price_out": 1.20,
     },
     "gemini-3.1-flash-lite": {

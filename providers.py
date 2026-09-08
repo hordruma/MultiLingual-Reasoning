@@ -47,8 +47,15 @@ class LLMResponse:
     truncated: bool = False     # True when the output hit the token cap
     reasoning: str = ""         # hidden reasoning returned by the provider, if any
     reasoning_promoted: bool = False  # content was empty; reasoning text used as the answer
+    reasoning_tokens: int = 0   # hidden-reasoning token count reported in usage (OpenAI-style)
     raw: Optional[dict] = None  # provider-specific payload for debugging
 
+
+
+def _usage_reasoning_tokens(usage: dict) -> int:
+    """OpenAI-style usage reports hidden reasoning only as a token count."""
+    details = (usage or {}).get("completion_tokens_details") or {}
+    return int(details.get("reasoning_tokens") or 0)
 
 # Anthropic's Messages API requires max_tokens, so an uncapped run needs a
 # concrete number there. Well above any observed completion length.
@@ -360,6 +367,7 @@ async def _call_openai_compat_stream(resolved: dict, system: str, user: str,
         latency_ms=elapsed, finish_reason=finish,
         truncated=(finish == "length"), reasoning=reasoning,
         reasoning_promoted=promoted, raw=None,
+        reasoning_tokens=_usage_reasoning_tokens(usage),
     )
 
 
@@ -394,6 +402,7 @@ async def _call_openai_compat(resolved: dict, system: str, user: str,
         latency_ms=elapsed, finish_reason=finish,
         truncated=(finish == "length"), reasoning=reasoning,
         reasoning_promoted=promoted, raw=data,
+        reasoning_tokens=_usage_reasoning_tokens(usage),
     )
 
 

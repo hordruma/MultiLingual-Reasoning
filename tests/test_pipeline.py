@@ -423,3 +423,20 @@ def test_streaming_applies_no_wall_clock_cut():
     assert "MAX_REQUEST_SECONDS" not in src
     assert not hasattr(providers, "MAX_REQUEST_SECONDS")
     assert providers.READ_TIMEOUT <= 300   # stalled connections still die fast
+
+
+def test_usage_reasoning_tokens_parsed():
+    import providers
+    assert providers._usage_reasoning_tokens({"completion_tokens": 10}) == 0
+    assert providers._usage_reasoning_tokens(
+        {"completion_tokens": 10, "completion_tokens_details": {"reasoning_tokens": 7}}) == 7
+    assert providers._usage_reasoning_tokens({}) == 0
+
+
+def test_luna_think_pair_shares_model_but_toggles_reasoning():
+    from config import MODELS
+    a, b = MODELS["gpt-5.6-luna"], MODELS["gpt-5.6-luna-think"]
+    assert a["model_id"] == b["model_id"]
+    assert a["request_overrides"]["reasoning_effort"] == "none"
+    assert b["request_overrides"]["reasoning_effort"] != "none"
+    assert a["hidden_reasoning"] == "off" and b["hidden_reasoning"] == "on"

@@ -26,6 +26,12 @@ from config import MODELS, CONDITIONS, LEGALBENCH_TASKS
 
 # ── Loading ──────────────────────────────────────────────────────────────
 
+
+def has_hidden_reasoning(row: dict) -> bool:
+    """Hidden reasoning came back either as text (reasoning_content) or only as a
+    token count in usage (OpenAI-style providers never return the text)."""
+    return (row.get("hidden_reasoning_chars") or 0) > 0 or (row.get("reasoning_tokens") or 0) > 0
+
 def load_sample_rows(results_dir: Path) -> List[dict]:
     """Every per-sample record from every <model>__<condition>__runN.jsonl file."""
     rows = []
@@ -71,7 +77,7 @@ def build_cell_frame(rows: Iterable[dict]) -> List[dict]:
             # accuracy over samples that terminated; runaways are failures to answer, not wrong answers
             "accuracy_complete": (sum(1 for r in answered if r["correct"] and not r.get("truncated"))
                                   / max(1, sum(1 for r in answered if not r.get("truncated")))),
-            "hidden_reasoning": sum(1 for r in answered if r.get("hidden_reasoning_chars", 0) > 0),
+            "hidden_reasoning": sum(1 for r in answered if has_hidden_reasoning(r)),
             "avg_output_tokens": out_tok / len(answered) if answered else 0.0,
             "total_output_tokens": out_tok,
             "total_input_tokens": sum(r.get("input_tokens", 0) for r in answered),
@@ -241,7 +247,7 @@ def compliance_table(rows: List[dict]) -> List[dict]:
             d["outside"] += 1
         if r.get("truncated"):
             d["trunc"] += 1
-        if r.get("hidden_reasoning_chars", 0) > 0:
+        if has_hidden_reasoning(r):
             d["hidden"] += 1
         if r.get("reasoning_promoted"):
             continue  # visible text is really hidden reasoning; not a compliance signal

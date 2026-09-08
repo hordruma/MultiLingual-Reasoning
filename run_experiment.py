@@ -219,7 +219,8 @@ async def _run_sample(resolved: dict, model_key: str, condition_key: str, run_id
                     "answer_marker_found": False, "predicted_in_label_set": False,
                     "truncated": False, "finish_reason": "", "error": str(e)[:500],
                     "input_tokens": 0, "output_tokens": 0, "latency_ms": 0, "full_response": "",
-                    "hidden_reasoning": "", "hidden_reasoning_chars": 0, "reasoning_promoted": False}
+                    "hidden_reasoning": "", "hidden_reasoning_chars": 0, "reasoning_promoted": False,
+                    "reasoning_tokens": 0}
 
     raw_pred, marker = extract_answer(resp.content)
     pred = normalize_to_label(raw_pred, labels)
@@ -241,6 +242,7 @@ async def _run_sample(resolved: dict, model_key: str, condition_key: str, run_id
         "hidden_reasoning": resp.reasoning,
         "hidden_reasoning_chars": len(resp.reasoning or ""),
         "reasoning_promoted": resp.reasoning_promoted,
+        "reasoning_tokens": resp.reasoning_tokens,
     }
 
 
