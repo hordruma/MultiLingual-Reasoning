@@ -220,7 +220,7 @@ figures/                        # written by the notebook
 ## Cost
 
 Use `--estimate`; it builds the real prompts and multiplies by the prices in
-`config.py`. For orientation, the default six models × 19 conditions ×
+`config.py`. For orientation, the default six models × 20 conditions ×
 ~1,100 samples × 1 run is roughly 125k calls. Prompts are long (few-shot
 examples plus some multi-paragraph disclosures), so input tokens matter as
 much as output. At the September 2026 list prices above that is on the

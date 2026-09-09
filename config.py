@@ -664,6 +664,25 @@ CONDITIONS = {
             "Only your final answer should be in English."
         ),
     },
+    # ── Constructed language ──────────────────────────────────────────────
+    # Ithkuil (John Quijada) is engineered for maximal precision and minimal
+    # ambiguity: the extreme of the "precise notation helps" hypothesis.  No
+    # model has meaningful Ithkuil fluency, so this also tests whether the
+    # *attempt* at a precision-optimised language helps or hurts.  Written in
+    # its Latin romanisation, so script compliance is not measurable (like the
+    # abstract notations); instruction in English because an Ithkuil
+    # instruction would not be understood.
+    "ithkuil": {
+        "family": "Constructed",
+        "script": None,
+        "instruction": (
+            "Think through this problem step by step in Ithkuil, the constructed language "
+            "designed by John Quijada for maximal precision and minimal ambiguity. "
+            "Write your full reasoning in Ithkuil (Latin romanisation) before giving your "
+            "final answer. Do NOT write your intermediate reasoning in English or any other "
+            "natural language. Only your final answer should be in English."
+        ),
+    },
     # ── Wildcard ──────────────────────────────────────────────────────────
     "wildcard": {
         "family": "Wildcard",

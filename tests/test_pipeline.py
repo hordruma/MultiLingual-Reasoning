@@ -519,3 +519,12 @@ def test_ollama_native_body_and_resolution(monkeypatch):
     assert b_on["options"]["num_predict"] == -1
     assert b_off["stream"] is True and [m["role"] for m in b_off["messages"]] == ["system", "user"]
     assert providers.PROVIDER_MAP["ollama"] is providers._call_ollama
+
+
+def test_ithkuil_condition_defined():
+    from config import CONDITIONS
+    c = CONDITIONS["ithkuil"]
+    assert c["family"] == "Constructed" and c["script"] is None and "Ithkuil" in c["instruction"]
+    s = data_loader.LegalBenchSample(task="hearsay", idx=0, text="x", label="Yes", prompt="P {{}}")
+    system, _ = rx.build_prompts(s, "ithkuil")
+    assert "Ithkuil" in system and "ANSWER: <label>" in system
