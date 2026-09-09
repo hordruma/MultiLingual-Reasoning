@@ -1,0 +1,9 @@
+condition,family,mean,std,n_cells
+english,Indo-European,0.855,0.06608075867199671,4
+wildcard,Wildcard,0.855,0.08999999999999997,4
+formal_logic,Abstract,0.8400000000000001,0.09237604307034014,4
+mandarin,Sino-Tibetan,0.835,0.08544003745317529,4
+german,Indo-European,0.825,0.09291573243177567,4
+arabic,Afroasiatic,0.815,0.0869865890046659,4
+finnish,Uralic,0.81,0.066332495807108,4
+no_cot,Control,0.745,0.1586400537905439,4
