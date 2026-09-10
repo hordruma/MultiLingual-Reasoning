@@ -521,10 +521,12 @@ def test_ollama_native_body_and_resolution(monkeypatch):
     assert providers.PROVIDER_MAP["ollama"] is providers._call_ollama
 
 
-def test_ithkuil_condition_defined():
+def test_constructed_language_conditions_defined():
     from config import CONDITIONS
+    for key, name in (("ithkuil", "Ithkuil"), ("toki_pona", "Toki Pona"), ("lojban", "Lojban"), ("esperanto", "Esperanto")):
+        c = CONDITIONS[key]
+        assert c["family"] == "Constructed" and c["script"] is None and name in c["instruction"], key
     c = CONDITIONS["ithkuil"]
-    assert c["family"] == "Constructed" and c["script"] is None and "Ithkuil" in c["instruction"]
     s = data_loader.LegalBenchSample(task="hearsay", idx=0, text="x", label="Yes", prompt="P {{}}")
     system, _ = rx.build_prompts(s, "ithkuil")
     assert "Ithkuil" in system and "ANSWER: <label>" in system

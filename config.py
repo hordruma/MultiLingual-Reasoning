@@ -783,6 +783,39 @@ CONDITIONS = {
             "natural language. Only your final answer should be in English."
         ),
     },
+    # Toki Pona is Ithkuil's diametric opposite: ~130 words, no inflection,
+    # deliberately vague, and models know it well.  Lojban and Esperanto
+    # separate the two things Ithkuil confounds (maximal precision vs the model
+    # simply lacking fluency): Lojban is precise *and* reasonably known;
+    # Esperanto is regular, natural-like and very well known.
+    "toki_pona": {
+        "family": "Constructed",
+        "script": None,
+        "instruction": (
+            "Think through this problem step by step in Toki Pona, the minimalist constructed "
+            "language of about 130 words. Write your full reasoning in Toki Pona before giving "
+            "your final answer. Do NOT write your intermediate reasoning in English or any other "
+            "natural language. Only your final answer should be in English."
+        ),
+    },
+    "lojban": {
+        "family": "Constructed",
+        "script": None,
+        "instruction": (
+            "Think through this problem step by step in Lojban, the logical constructed language "
+            "with an unambiguous grammar. Write your full reasoning in Lojban before giving your "
+            "final answer. Do NOT write your intermediate reasoning in English or any other "
+            "natural language. Only your final answer should be in English."
+        ),
+    },
+    "esperanto": {
+        "family": "Constructed",
+        "script": None,
+        "instruction": (
+            "Pripensu ĉi tiun problemon paŝon post paŝo en Esperanto. Montru vian tutan rezonadon "
+            "en Esperanto antaŭ ol doni vian finan respondon. Only your final answer should be in English."
+        ),
+    },
     # ── Wildcard ──────────────────────────────────────────────────────────
     "wildcard": {
         "family": "Wildcard",
