@@ -463,7 +463,7 @@ MODELS = {
         "provider": "openai_compat",
         "model_id": "qwen3.5:9b",
         "display": "Ollama local: qwen3.5:9b",
-        "origin_country": "local",
+        "origin_country": "China",   # Qwen (Alibaba); feeds the origin test
         "api_key_env": "OLLAMA_API_KEY",
         "api_key_default": "ollama",
         "base_url_env": "OLLAMA_BASE_URL",
@@ -476,7 +476,7 @@ MODELS = {
         "provider": "openai_compat",
         "model_id": "qwen3.5:35b",
         "display": "Ollama local: qwen3.5:35b",
-        "origin_country": "local",
+        "origin_country": "China",   # Qwen (Alibaba); feeds the origin test
         "api_key_env": "OLLAMA_API_KEY",
         "api_key_default": "ollama",
         "base_url_env": "OLLAMA_BASE_URL",
@@ -489,7 +489,7 @@ MODELS = {
         "provider": "openai_compat",
         "model_id": "qwen3.6:35b",
         "display": "Ollama local: qwen3.6:35b",
-        "origin_country": "local",
+        "origin_country": "China",   # Qwen (Alibaba); feeds the origin test
         "api_key_env": "OLLAMA_API_KEY",
         "api_key_default": "ollama",
         "base_url_env": "OLLAMA_BASE_URL",
@@ -502,7 +502,7 @@ MODELS = {
         "provider": "openai_compat",
         "model_id": "qwen3.8:27b",
         "display": "Ollama local: qwen3.8:27b",
-        "origin_country": "local",
+        "origin_country": "China",   # Qwen (Alibaba); feeds the origin test
         "api_key_env": "OLLAMA_API_KEY",
         "api_key_default": "ollama",
         "base_url_env": "OLLAMA_BASE_URL",
