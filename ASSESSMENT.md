@@ -509,3 +509,41 @@ Mandarin, Japanese, Korean, Hindi, Arabic), then Qwen3.5 thinking on
 (English, no_cot, Mandarin); 50 samples per task, prompt v2, temperature 0,
 one generation at a time.  GPT-5.6 Luna v2 in the same directory is the
 non-native comparison under an identical prompt.
+
+## Addendum: Ithkuil condition (2026-09-10)
+
+A 20th condition, `ithkuil` (family "Constructed"): reason in Ithkuil, the
+conlang engineered for maximal precision and minimal ambiguity. It is the
+extreme of the "precise notation helps" hypothesis, and since no model has
+real Ithkuil fluency it also tests what the *attempt* does. Instruction in
+English (an Ithkuil instruction would not be understood); no script check.
+
+**GLM-5.3, prompt v1, all 1,048 samples, zero errors after a resume pass:**
+
+- Runaway (non-terminating) rate **54.1 %** vs 1.8 % in English. Paired
+  McNemar on the runaway flag: 555 samples ran away in Ithkuil where English
+  terminated, 7 the other way, p ≈ 5×10⁻¹⁵⁴, the strongest effect in the study.
+- Raw accuracy −38.2 points vs English (p ≈ 4×10⁻⁹⁷), entirely the runaways.
+- On the 474 samples where both terminated: 84.4 % vs 84.2 %, identical. The
+  hidden channel carried the answer; the visible Ithkuil-shaped text did not
+  add or subtract anything.
+- Cost: median 33k output tokens per answer (English 4.3k), runaways median
+  51k and up to 83k tokens (20–40 minutes each), plus a median 116k
+  characters of hidden reasoning. About 8× the tokens of English for the same
+  accuracy when it worked, and no answer at all more than half the time.
+
+Against the other notations on GLM (emergent −0.4, pseudocode −0.6, formal
+logic −1.2 excl. runaways, all noise, runaway rates 1–5 %) this is a different
+failure mode, not a bigger version of the same one.
+
+**gpt-4.1-mini, prompt v1, partial (75 samples answered before the OpenAI
+account ran out of credit):** 69 of 75 ran away, looping pseudo-Ithkuil
+(`Vëxšëpšëx, vëxšëpšëx, …`) to the model's 32,768-token limit, ~3.5 minutes
+each; accuracy 8 % vs 91 % for English on the same samples. GPT-5.6 Luna
+(prompt v2): not started, 10 credit errors. Both resume with the same
+commands once credit is added (`run_experiment.py --conditions ithkuil`).
+
+Interpretation: the precision-language hypothesis inverts on both models
+reached. Asked to reason in a maximally precise language it cannot produce,
+the model generates language-shaped output until it hits a ceiling, and the
+metric that moves is termination, not accuracy.
