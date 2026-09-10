@@ -1,0 +1,17 @@
+model,condition,n,script_ratio,no_marker_rate,outside_label_rate,error_rate,truncated_rate,hidden_reasoning_rate
+ollama_qwen35_9b,arabic,100,0.0,0.02,0.02,0.0,0.02,0.0
+ollama_qwen35_9b,english,100,1.0,0.06,0.04,0.0,0.06,0.0
+ollama_qwen35_9b,finnish,100,1.0,0.04,0.03,0.0,0.04,0.0
+ollama_qwen35_9b,formal_logic,100,,0.03,0.03,0.0,0.06,0.0
+ollama_qwen35_9b,german,100,1.0,0.04,0.02,0.0,0.05,0.0
+ollama_qwen35_9b,mandarin,100,0.09075671693387571,0.04,0.03,0.0,0.06,0.0
+ollama_qwen35_9b,no_cot,100,,0.0,0.0,0.0,0.0,0.0
+ollama_qwen35_9b,wildcard,100,,0.05,0.05,0.0,0.05,0.0
+ollama_qwen38_27b,arabic,100,0.5906805333428529,0.0,0.0,0.0,0.0,0.0
+ollama_qwen38_27b,english,100,1.0,0.0,0.0,0.0,0.0,0.0
+ollama_qwen38_27b,finnish,100,0.9999965997959878,0.01,0.01,0.0,0.01,0.0
+ollama_qwen38_27b,formal_logic,100,,0.03,0.03,0.0,0.03,0.0
+ollama_qwen38_27b,german,100,1.0,0.0,0.0,0.0,0.0,0.0
+ollama_qwen38_27b,mandarin,100,0.029222173709546762,0.02,0.02,0.0,0.02,0.0
+ollama_qwen38_27b,no_cot,100,,0.0,0.0,0.0,0.0,0.0
+ollama_qwen38_27b,wildcard,100,,0.02,0.02,0.0,0.02,0.0
