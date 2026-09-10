@@ -1,0 +1,640 @@
+{
+  "timestamp": "2026-09-09T13:57:40.038648+00:00",
+  "complete": true,
+  "elapsed_seconds": 48643.985211295076,
+  "models": [
+    "ollama_qwen35_9b",
+    "ollama_qwen38_27b"
+  ],
+  "conditions": [
+    "english",
+    "mandarin",
+    "german",
+    "arabic",
+    "finnish",
+    "formal_logic",
+    "wildcard",
+    "no_cot"
+  ],
+  "tasks": [
+    "hearsay",
+    "personal_jurisdiction"
+  ],
+  "num_runs": 1,
+  "max_samples_per_task": 50,
+  "sample_seed": 20240901,
+  "temperature": 0.0,
+  "max_output_tokens": 4096,
+  "total_samples_per_cell": 100,
+  "contains_mock": false,
+  "results": [
+    {
+      "model": "ollama_qwen35_9b",
+      "model_display": "Ollama local: qwen3.5:9b",
+      "condition": "english",
+      "condition_family": "Indo-European",
+      "model_origin": "local",
+      "run_id": 0,
+      "total": 100,
+      "answered": 100,
+      "correct": 80,
+      "accuracy": 0.8,
+      "accuracy_answered": 0.8,
+      "errors": 0,
+      "truncated": 6,
+      "answer_marker_missing": 6,
+      "predicted_outside_label_set": 4,
+      "hidden_reasoning_samples": 0,
+      "hidden_reasoning_policy": "off",
+      "total_input_tokens": 53955,
+      "total_output_tokens": 119358,
+      "avg_output_tokens": 1193.58,
+      "total_latency_ms": 3081291.376895737,
+      "avg_latency_ms": 30812.91376895737,
+      "per_task": {
+        "hearsay": {
+          "n": 50,
+          "correct": 39,
+          "errors": 0,
+          "accuracy": 0.78
+        },
+        "personal_jurisdiction": {
+          "n": 50,
+          "correct": 41,
+          "errors": 0,
+          "accuracy": 0.82
+        }
+      }
+    },
+    {
+      "model": "ollama_qwen35_9b",
+      "model_display": "Ollama local: qwen3.5:9b",
+      "condition": "mandarin",
+      "condition_family": "Sino-Tibetan",
+      "model_origin": "local",
+      "run_id": 0,
+      "total": 100,
+      "answered": 100,
+      "correct": 83,
+      "accuracy": 0.83,
+      "accuracy_answered": 0.83,
+      "errors": 0,
+      "truncated": 6,
+      "answer_marker_missing": 4,
+      "predicted_outside_label_set": 3,
+      "hidden_reasoning_samples": 0,
+      "hidden_reasoning_policy": "off",
+      "total_input_tokens": 54555,
+      "total_output_tokens": 122119,
+      "avg_output_tokens": 1221.19,
+      "total_latency_ms": 3156873.6294829287,
+      "avg_latency_ms": 31568.736294829287,
+      "per_task": {
+        "hearsay": {
+          "n": 50,
+          "correct": 40,
+          "errors": 0,
+          "accuracy": 0.8
+        },
+        "personal_jurisdiction": {
+          "n": 50,
+          "correct": 43,
+          "errors": 0,
+          "accuracy": 0.86
+        }
+      }
+    },
+    {
+      "model": "ollama_qwen35_9b",
+      "model_display": "Ollama local: qwen3.5:9b",
+      "condition": "german",
+      "condition_family": "Indo-European",
+      "model_origin": "local",
+      "run_id": 0,
+      "total": 100,
+      "answered": 100,
+      "correct": 80,
+      "accuracy": 0.8,
+      "accuracy_answered": 0.8,
+      "errors": 0,
+      "truncated": 5,
+      "answer_marker_missing": 4,
+      "predicted_outside_label_set": 2,
+      "hidden_reasoning_samples": 0,
+      "hidden_reasoning_policy": "off",
+      "total_input_tokens": 55955,
+      "total_output_tokens": 109043,
+      "avg_output_tokens": 1090.43,
+      "total_latency_ms": 2840218.496487476,
+      "avg_latency_ms": 28402.18496487476,
+      "per_task": {
+        "hearsay": {
+          "n": 50,
+          "correct": 37,
+          "errors": 0,
+          "accuracy": 0.74
+        },
+        "personal_jurisdiction": {
+          "n": 50,
+          "correct": 43,
+          "errors": 0,
+          "accuracy": 0.86
+        }
+      }
+    },
+    {
+      "model": "ollama_qwen35_9b",
+      "model_display": "Ollama local: qwen3.5:9b",
+      "condition": "arabic",
+      "condition_family": "Afroasiatic",
+      "model_origin": "local",
+      "run_id": 0,
+      "total": 100,
+      "answered": 100,
+      "correct": 79,
+      "accuracy": 0.79,
+      "accuracy_answered": 0.79,
+      "errors": 0,
+      "truncated": 2,
+      "answer_marker_missing": 2,
+      "predicted_outside_label_set": 2,
+      "hidden_reasoning_samples": 0,
+      "hidden_reasoning_policy": "off",
+      "total_input_tokens": 55455,
+      "total_output_tokens": 107530,
+      "avg_output_tokens": 1075.3,
+      "total_latency_ms": 2780113.616733346,
+      "avg_latency_ms": 27801.13616733346,
+      "per_task": {
+        "hearsay": {
+          "n": 50,
+          "correct": 39,
+          "errors": 0,
+          "accuracy": 0.78
+        },
+        "personal_jurisdiction": {
+          "n": 50,
+          "correct": 40,
+          "errors": 0,
+          "accuracy": 0.8
+        }
+      }
+    },
+    {
+      "model": "ollama_qwen35_9b",
+      "model_display": "Ollama local: qwen3.5:9b",
+      "condition": "finnish",
+      "condition_family": "Uralic",
+      "model_origin": "local",
+      "run_id": 0,
+      "total": 100,
+      "answered": 100,
+      "correct": 79,
+      "accuracy": 0.79,
+      "accuracy_answered": 0.79,
+      "errors": 0,
+      "truncated": 4,
+      "answer_marker_missing": 4,
+      "predicted_outside_label_set": 3,
+      "hidden_reasoning_samples": 0,
+      "hidden_reasoning_policy": "off",
+      "total_input_tokens": 56055,
+      "total_output_tokens": 118520,
+      "avg_output_tokens": 1185.2,
+      "total_latency_ms": 3076374.23427077,
+      "avg_latency_ms": 30763.7423427077,
+      "per_task": {
+        "hearsay": {
+          "n": 50,
+          "correct": 38,
+          "errors": 0,
+          "accuracy": 0.76
+        },
+        "personal_jurisdiction": {
+          "n": 50,
+          "correct": 41,
+          "errors": 0,
+          "accuracy": 0.82
+        }
+      }
+    },
+    {
+      "model": "ollama_qwen35_9b",
+      "model_display": "Ollama local: qwen3.5:9b",
+      "condition": "formal_logic",
+      "condition_family": "Abstract",
+      "model_origin": "local",
+      "run_id": 0,
+      "total": 100,
+      "answered": 100,
+      "correct": 84,
+      "accuracy": 0.84,
+      "accuracy_answered": 0.84,
+      "errors": 0,
+      "truncated": 6,
+      "answer_marker_missing": 3,
+      "predicted_outside_label_set": 3,
+      "hidden_reasoning_samples": 0,
+      "hidden_reasoning_policy": "off",
+      "total_input_tokens": 57855,
+      "total_output_tokens": 130586,
+      "avg_output_tokens": 1305.86,
+      "total_latency_ms": 3379545.343290083,
+      "avg_latency_ms": 33795.45343290083,
+      "per_task": {
+        "hearsay": {
+          "n": 50,
+          "correct": 38,
+          "errors": 0,
+          "accuracy": 0.76
+        },
+        "personal_jurisdiction": {
+          "n": 50,
+          "correct": 46,
+          "errors": 0,
+          "accuracy": 0.92
+        }
+      }
+    },
+    {
+      "model": "ollama_qwen35_9b",
+      "model_display": "Ollama local: qwen3.5:9b",
+      "condition": "wildcard",
+      "condition_family": "Wildcard",
+      "model_origin": "local",
+      "run_id": 0,
+      "total": 100,
+      "answered": 100,
+      "correct": 83,
+      "accuracy": 0.83,
+      "accuracy_answered": 0.83,
+      "errors": 0,
+      "truncated": 5,
+      "answer_marker_missing": 5,
+      "predicted_outside_label_set": 5,
+      "hidden_reasoning_samples": 0,
+      "hidden_reasoning_policy": "off",
+      "total_input_tokens": 59255,
+      "total_output_tokens": 104583,
+      "avg_output_tokens": 1045.83,
+      "total_latency_ms": 2718570.121518802,
+      "avg_latency_ms": 27185.70121518802,
+      "per_task": {
+        "hearsay": {
+          "n": 50,
+          "correct": 43,
+          "errors": 0,
+          "accuracy": 0.86
+        },
+        "personal_jurisdiction": {
+          "n": 50,
+          "correct": 40,
+          "errors": 0,
+          "accuracy": 0.8
+        }
+      }
+    },
+    {
+      "model": "ollama_qwen35_9b",
+      "model_display": "Ollama local: qwen3.5:9b",
+      "condition": "no_cot",
+      "condition_family": "Control",
+      "model_origin": "local",
+      "run_id": 0,
+      "total": 100,
+      "answered": 100,
+      "correct": 64,
+      "accuracy": 0.64,
+      "accuracy_answered": 0.64,
+      "errors": 0,
+      "truncated": 0,
+      "answer_marker_missing": 0,
+      "predicted_outside_label_set": 0,
+      "hidden_reasoning_samples": 0,
+      "hidden_reasoning_policy": "off",
+      "total_input_tokens": 53855,
+      "total_output_tokens": 500,
+      "avg_output_tokens": 5.0,
+      "total_latency_ms": 35391.15312509239,
+      "avg_latency_ms": 353.9115312509239,
+      "per_task": {
+        "hearsay": {
+          "n": 50,
+          "correct": 35,
+          "errors": 0,
+          "accuracy": 0.7
+        },
+        "personal_jurisdiction": {
+          "n": 50,
+          "correct": 29,
+          "errors": 0,
+          "accuracy": 0.58
+        }
+      }
+    },
+    {
+      "model": "ollama_qwen38_27b",
+      "model_display": "Ollama local: qwen3.8:27b",
+      "condition": "english",
+      "condition_family": "Indo-European",
+      "model_origin": "local",
+      "run_id": 0,
+      "total": 100,
+      "answered": 100,
+      "correct": 91,
+      "accuracy": 0.91,
+      "accuracy_answered": 0.91,
+      "errors": 0,
+      "truncated": 0,
+      "answer_marker_missing": 0,
+      "predicted_outside_label_set": 0,
+      "hidden_reasoning_samples": 0,
+      "hidden_reasoning_policy": "off",
+      "total_input_tokens": 53955,
+      "total_output_tokens": 80310,
+      "avg_output_tokens": 803.1,
+      "total_latency_ms": 3386542.119097896,
+      "avg_latency_ms": 33865.42119097896,
+      "per_task": {
+        "hearsay": {
+          "n": 50,
+          "correct": 45,
+          "errors": 0,
+          "accuracy": 0.9
+        },
+        "personal_jurisdiction": {
+          "n": 50,
+          "correct": 46,
+          "errors": 0,
+          "accuracy": 0.92
+        }
+      }
+    },
+    {
+      "model": "ollama_qwen38_27b",
+      "model_display": "Ollama local: qwen3.8:27b",
+      "condition": "mandarin",
+      "condition_family": "Sino-Tibetan",
+      "model_origin": "local",
+      "run_id": 0,
+      "total": 100,
+      "answered": 100,
+      "correct": 84,
+      "accuracy": 0.84,
+      "accuracy_answered": 0.84,
+      "errors": 0,
+      "truncated": 2,
+      "answer_marker_missing": 2,
+      "predicted_outside_label_set": 2,
+      "hidden_reasoning_samples": 0,
+      "hidden_reasoning_policy": "off",
+      "total_input_tokens": 54555,
+      "total_output_tokens": 90624,
+      "avg_output_tokens": 906.24,
+      "total_latency_ms": 3830699.919299688,
+      "avg_latency_ms": 38306.99919299688,
+      "per_task": {
+        "hearsay": {
+          "n": 50,
+          "correct": 37,
+          "errors": 0,
+          "accuracy": 0.74
+        },
+        "personal_jurisdiction": {
+          "n": 50,
+          "correct": 47,
+          "errors": 0,
+          "accuracy": 0.94
+        }
+      }
+    },
+    {
+      "model": "ollama_qwen38_27b",
+      "model_display": "Ollama local: qwen3.8:27b",
+      "condition": "german",
+      "condition_family": "Indo-European",
+      "model_origin": "local",
+      "run_id": 0,
+      "total": 100,
+      "answered": 100,
+      "correct": 85,
+      "accuracy": 0.85,
+      "accuracy_answered": 0.85,
+      "errors": 0,
+      "truncated": 0,
+      "answer_marker_missing": 0,
+      "predicted_outside_label_set": 0,
+      "hidden_reasoning_samples": 0,
+      "hidden_reasoning_policy": "off",
+      "total_input_tokens": 55955,
+      "total_output_tokens": 105213,
+      "avg_output_tokens": 1052.13,
+      "total_latency_ms": 4792577.752133366,
+      "avg_latency_ms": 47925.77752133366,
+      "per_task": {
+        "hearsay": {
+          "n": 50,
+          "correct": 38,
+          "errors": 0,
+          "accuracy": 0.76
+        },
+        "personal_jurisdiction": {
+          "n": 50,
+          "correct": 47,
+          "errors": 0,
+          "accuracy": 0.94
+        }
+      }
+    },
+    {
+      "model": "ollama_qwen38_27b",
+      "model_display": "Ollama local: qwen3.8:27b",
+      "condition": "arabic",
+      "condition_family": "Afroasiatic",
+      "model_origin": "local",
+      "run_id": 0,
+      "total": 100,
+      "answered": 100,
+      "correct": 84,
+      "accuracy": 0.84,
+      "accuracy_answered": 0.84,
+      "errors": 0,
+      "truncated": 0,
+      "answer_marker_missing": 0,
+      "predicted_outside_label_set": 0,
+      "hidden_reasoning_samples": 0,
+      "hidden_reasoning_policy": "off",
+      "total_input_tokens": 55455,
+      "total_output_tokens": 94382,
+      "avg_output_tokens": 943.82,
+      "total_latency_ms": 4370022.95251796,
+      "avg_latency_ms": 43700.2295251796,
+      "per_task": {
+        "hearsay": {
+          "n": 50,
+          "correct": 37,
+          "errors": 0,
+          "accuracy": 0.74
+        },
+        "personal_jurisdiction": {
+          "n": 50,
+          "correct": 47,
+          "errors": 0,
+          "accuracy": 0.94
+        }
+      }
+    },
+    {
+      "model": "ollama_qwen38_27b",
+      "model_display": "Ollama local: qwen3.8:27b",
+      "condition": "finnish",
+      "condition_family": "Uralic",
+      "model_origin": "local",
+      "run_id": 0,
+      "total": 100,
+      "answered": 100,
+      "correct": 83,
+      "accuracy": 0.83,
+      "accuracy_answered": 0.83,
+      "errors": 0,
+      "truncated": 1,
+      "answer_marker_missing": 1,
+      "predicted_outside_label_set": 1,
+      "hidden_reasoning_samples": 0,
+      "hidden_reasoning_policy": "off",
+      "total_input_tokens": 56055,
+      "total_output_tokens": 105713,
+      "avg_output_tokens": 1057.13,
+      "total_latency_ms": 5236914.265258238,
+      "avg_latency_ms": 52369.14265258238,
+      "per_task": {
+        "hearsay": {
+          "n": 50,
+          "correct": 38,
+          "errors": 0,
+          "accuracy": 0.76
+        },
+        "personal_jurisdiction": {
+          "n": 50,
+          "correct": 45,
+          "errors": 0,
+          "accuracy": 0.9
+        }
+      }
+    },
+    {
+      "model": "ollama_qwen38_27b",
+      "model_display": "Ollama local: qwen3.8:27b",
+      "condition": "formal_logic",
+      "condition_family": "Abstract",
+      "model_origin": "local",
+      "run_id": 0,
+      "total": 100,
+      "answered": 100,
+      "correct": 84,
+      "accuracy": 0.84,
+      "accuracy_answered": 0.84,
+      "errors": 0,
+      "truncated": 3,
+      "answer_marker_missing": 3,
+      "predicted_outside_label_set": 3,
+      "hidden_reasoning_samples": 0,
+      "hidden_reasoning_policy": "off",
+      "total_input_tokens": 57855,
+      "total_output_tokens": 96012,
+      "avg_output_tokens": 960.12,
+      "total_latency_ms": 3780602.0750831813,
+      "avg_latency_ms": 37806.02075083181,
+      "per_task": {
+        "hearsay": {
+          "n": 50,
+          "correct": 38,
+          "errors": 0,
+          "accuracy": 0.76
+        },
+        "personal_jurisdiction": {
+          "n": 50,
+          "correct": 46,
+          "errors": 0,
+          "accuracy": 0.92
+        }
+      }
+    },
+    {
+      "model": "ollama_qwen38_27b",
+      "model_display": "Ollama local: qwen3.8:27b",
+      "condition": "wildcard",
+      "condition_family": "Wildcard",
+      "model_origin": "local",
+      "run_id": 0,
+      "total": 100,
+      "answered": 100,
+      "correct": 88,
+      "accuracy": 0.88,
+      "accuracy_answered": 0.88,
+      "errors": 0,
+      "truncated": 2,
+      "answer_marker_missing": 2,
+      "predicted_outside_label_set": 2,
+      "hidden_reasoning_samples": 0,
+      "hidden_reasoning_policy": "off",
+      "total_input_tokens": 59255,
+      "total_output_tokens": 79826,
+      "avg_output_tokens": 798.26,
+      "total_latency_ms": 3305243.5741364025,
+      "avg_latency_ms": 33052.435741364025,
+      "per_task": {
+        "hearsay": {
+          "n": 50,
+          "correct": 39,
+          "errors": 0,
+          "accuracy": 0.78
+        },
+        "personal_jurisdiction": {
+          "n": 50,
+          "correct": 49,
+          "errors": 0,
+          "accuracy": 0.98
+        }
+      }
+    },
+    {
+      "model": "ollama_qwen38_27b",
+      "model_display": "Ollama local: qwen3.8:27b",
+      "condition": "no_cot",
+      "condition_family": "Control",
+      "model_origin": "local",
+      "run_id": 0,
+      "total": 100,
+      "answered": 100,
+      "correct": 85,
+      "accuracy": 0.85,
+      "accuracy_answered": 0.85,
+      "errors": 0,
+      "truncated": 0,
+      "answer_marker_missing": 0,
+      "predicted_outside_label_set": 0,
+      "hidden_reasoning_samples": 0,
+      "hidden_reasoning_policy": "off",
+      "total_input_tokens": 53855,
+      "total_output_tokens": 56819,
+      "avg_output_tokens": 568.19,
+      "total_latency_ms": 2416489.8562291637,
+      "avg_latency_ms": 24164.898562291637,
+      "per_task": {
+        "hearsay": {
+          "n": 50,
+          "correct": 37,
+          "errors": 0,
+          "accuracy": 0.74
+        },
+        "personal_jurisdiction": {
+          "n": 50,
+          "correct": 48,
+          "errors": 0,
+          "accuracy": 0.96
+        }
+      }
+    }
+  ]
+}
