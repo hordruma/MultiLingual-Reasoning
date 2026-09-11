@@ -563,7 +563,7 @@ paired against English on the same samples:
 | esperanto | 3.5 % | 0.01 | 86.3 % vs 85.9 % (+0.4, p = 0.64) | 1.4k | 3.5k |
 | toki_pona | 24.2 % | 10⁻⁶⁰ | 87.4 % vs 88.4 % (−1.0, p = 0.06) | 6.4k | 19k |
 | ithkuil | 54.1 % | 10⁻¹⁵⁴ | 84.4 % vs 84.2 % (+0.2, p = 1.0) | 33k | 116k |
-| lojban | 75.0 % | 10⁻²²⁴ | 85.6 % vs 85.6 % (0.0, p = 1.0) | 66k (at the ceiling) | 205k |
+| lojban | 75.1 % | 10⁻²²⁷ | 85.7 % vs 85.7 % (0.0, p = 1.0) | 66k (at the ceiling) | 205k |
 
 Predictions recorded before the data: Lojban would run away far less than
 Ithkuil (fluency, not precision, as the cause), Toki Pona would terminate
