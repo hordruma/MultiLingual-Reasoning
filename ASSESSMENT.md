@@ -547,3 +547,44 @@ Interpretation: the precision-language hypothesis inverts on both models
 reached. Asked to reason in a maximally precise language it cannot produce,
 the model generates language-shaped output until it hits a ceiling, and the
 metric that moves is termination, not accuracy.
+
+## Addendum: the constructed-language grid (2026-09-10)
+
+Ithkuil confounds two things: maximal precision and the model's lack of
+fluency. Three more conditions separate them: **Lojban** (unambiguous logical
+grammar, decent web corpus), **Toki Pona** (~130 words, deliberately vague,
+well known to models: Ithkuil's opposite) and **Esperanto** (regular,
+natural-like, very well known). GLM-5.3, prompt v1, 1,048 samples each,
+paired against English on the same samples:
+
+| condition | runaway | p (runaway vs English) | acc when terminated (vs English) | tokens/answer (median) | hidden chars |
+|---|---|---|---|---|---|
+| english | 1.8 % | – | – | 1.0k | 3.2k |
+| esperanto | 3.5 % | 0.01 | 86.3 % vs 85.9 % (+0.4, p = 0.64) | 1.4k | 3.5k |
+| toki_pona | 24.2 % | 10⁻⁶⁰ | 87.4 % vs 88.4 % (−1.0, p = 0.06) | 6.4k | 19k |
+| ithkuil | 54.1 % | 10⁻¹⁵⁴ | 84.4 % vs 84.2 % (+0.2, p = 1.0) | 33k | 116k |
+| lojban | 75.0 % | 10⁻²²⁴ | 85.6 % vs 85.6 % (0.0, p = 1.0) | 66k (at the ceiling) | 205k |
+
+Predictions recorded before the data: Lojban would run away far less than
+Ithkuil (fluency, not precision, as the cause), Toki Pona would terminate
+normally, Esperanto would behave like a natural language. Only the third held.
+
+- Lojban is the worst condition in the study, worse than Ithkuil, although the
+  model plainly knows it (the terminated output is well-formed Lojban). So
+  fluency is not what drives the runaways, and neither is precision alone:
+  Toki Pona, the least precise language possible, runs away 13× as often as
+  English while being written correctly (median 84 % of words from the
+  lexicon).
+- On every conlang, accuracy on terminated samples is indistinguishable from
+  English. Four conditions, four null results on correctness, four enormous
+  effects on termination. The token cost ladder is Esperanto 1.4×, Toki Pona
+  6×, Ithkuil 33×, Lojban 66× English, for no accuracy gain anywhere.
+- What the four share is being a language the model *produces* far less
+  fluently than it *recognises*; production quality tracks corpus size
+  (Esperanto ≫ Toki Pona > Lojban ≈ Ithkuil) and so does the runaway rate,
+  except that Lojban's unambiguous grammar seems to make matters worse rather
+  than better. A production-fluency explanation fits; a precision explanation
+  does not.
+
+Same commands queued for gpt-4.1-mini and GPT-5.6 Luna (`run_openai_queue.sh`)
+once the OpenAI account has credit.
