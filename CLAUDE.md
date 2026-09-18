@@ -2,8 +2,8 @@
 
 ## Project Overview
 Research project testing whether the language used for chain-of-thought
-reasoning affects LLM accuracy on legal classification tasks. 23 reasoning
-conditions (14 natural languages, 3 abstract notations, 4 constructed languages, wildcard, no-CoT
+reasoning affects LLM accuracy on legal classification tasks. 24 reasoning
+conditions (14 natural languages, 3 abstract notations, 4 constructed languages, wildcard, mandatory-mixing polyglot, no-CoT
 control) × configurable models (default: 6 cheap cloud models, Sept 2026 lineup;
 local Ollama/LM Studio supported) × 9 closed-label LegalBench tasks. Audit history and known caveats are in
 ASSESSMENT.md; read it before changing scoring or prompts.

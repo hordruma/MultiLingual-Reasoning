@@ -530,3 +530,15 @@ def test_constructed_language_conditions_defined():
     s = data_loader.LegalBenchSample(task="hearsay", idx=0, text="x", label="Yes", prompt="P {{}}")
     system, _ = rx.build_prompts(s, "ithkuil")
     assert "Ithkuil" in system and "ANSWER: <label>" in system
+
+
+def test_repetition_table_separates_loops_from_prose():
+    from analyze import repetition_table
+    prose = "The court held that the statement was offered for its truth, so it is hearsay under the rule."
+    rows = [{"condition": "ithkuil", "truncated": True, "full_response": "vëx šëp " * 4000},
+            {"condition": "ithkuil", "truncated": False, "full_response": prose},
+            {"condition": "ithkuil", "error": "boom", "full_response": ""}]
+    table = {d["subset"]: d for d in repetition_table(rows)}
+    assert table["runaway"]["median_distinct_words"] == 2
+    assert table["runaway"]["median_compression_ratio"] < 0.02 < table["terminated"]["median_compression_ratio"]
+    assert table["runaway"]["n"] == table["terminated"]["n"] == 1

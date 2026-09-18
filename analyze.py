@@ -17,6 +17,7 @@ import math
 import re
 import statistics
 import unicodedata
+import zlib
 from collections import defaultdict
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -326,6 +327,36 @@ def runaway_table(rows: List[dict]) -> List[dict]:
     return sorted(out, key=lambda d: -d["rate"])
 
 
+_WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
+
+
+def repetition_stats(text: str) -> Tuple[int, int, float]:
+    """(words, distinct words, zlib compressed/raw byte ratio) of a response.  A looping
+    generation has few distinct words and a ratio near 0; ordinary prose sits around 0.3-0.5."""
+    words = [w.lower() for w in _WORD.findall(text or "")]
+    raw = (text or "").encode("utf-8")
+    return len(words), len(set(words)), (len(zlib.compress(raw, 6)) / len(raw)) if raw else 0.0
+
+
+def repetition_table(rows: List[dict]) -> List[dict]:
+    """Degeneracy of the visible text per condition, runaways apart from terminated answers:
+    do runaways keep producing new text or loop over a handful of words?"""
+    groups = defaultdict(list)
+    for r in rows:
+        if r.get("error") or not r.get("full_response"):
+            continue
+        groups[(r["condition"], "runaway" if r.get("truncated") else "terminated")].append(
+            repetition_stats(r["full_response"]))
+    out = []
+    for (cond, subset), stats in sorted(groups.items()):
+        out.append({"condition": cond, "subset": subset, "n": len(stats),
+                    "median_words": statistics.median(s[0] for s in stats),
+                    "median_distinct_words": statistics.median(s[1] for s in stats),
+                    "median_distinct_ratio": statistics.median(s[1] / s[0] if s[0] else 0.0 for s in stats),
+                    "median_compression_ratio": statistics.median(s[2] for s in stats)})
+    return out
+
+
 def paired_condition_test(rows: List[dict], cond_a: str, cond_b: str) -> List[dict]:
     """
     Per model (and pooled): sample-level paired comparison of cond_b vs cond_a
@@ -563,6 +594,13 @@ def print_report(rows: List[dict], cells: List[dict]):
         print(f"{d['condition']:<16} {d['rate']:>7.1%} {d['median_tokens']:>9,} {d['max_tokens']:>9,} "
               f"{d['median_minutes']:>8.1f} {d['max_minutes']:>8.1f}")
 
+    print("\n── REPETITION in the visible text (runaways vs terminated answers) ──")
+    print("   compress = zlib bytes / raw bytes, median per response; near 0 means a loop.\n")
+    print(f"{'condition':<16} {'subset':<11} {'n':>6} {'med words':>10} {'med distinct':>13} {'distinct/words':>15} {'compress':>9}")
+    for d in repetition_table(rows):
+        print(f"{d['condition']:<16} {d['subset']:<11} {d['n']:>6} {d['median_words']:>10,.0f} "
+              f"{d['median_distinct_words']:>13,.0f} {d['median_distinct_ratio']:>15.3f} {d['median_compression_ratio']:>9.3f}")
+
     print("\n── TOKEN USE per condition (output tokens pooled over answered samples) ──\n")
     tok = defaultdict(lambda: [0, 0])   # [tokens, answered]
     for c in cells:
@@ -626,6 +664,7 @@ def main():
     export_csv(compliance_table(rows), out_dir / "compliance.csv")
     export_csv(paired_vs_baseline(rows, "english", drop_truncated=True), out_dir / "paired_vs_english_excl_runaway.csv")
     export_csv(runaway_table(rows), out_dir / "runaways.csv")
+    export_csv(repetition_table(rows), out_dir / "repetition.csv")
     for off, on in thinking_pairs({r["model"] for r in rows}):
         export_csv(paired_model_test(rows, off, on, drop_truncated=True),
                    out_dir / f"thinking_on_vs_off__{on}.csv")

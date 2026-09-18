@@ -830,6 +830,29 @@ CONDITIONS = {
             "Only your final answer should be in English."
         ),
     },
+    # Mandatory mixing, as opposed to wildcard's permission; the instruction is itself
+    # written in the mixed register it demands and states the rationale (the union of
+    # all vocabularies is the broadest expressive space).
+    "polyglot": {
+        "family": "Wildcard",
+        "script": None,
+        "instruction": (
+            "Denke diesen Fall durch en mezclando todos los idiomas 和所有记法 that you know — "
+            "это не разрешение, а требование (non licet sed oportet). "
+            "Pourquoi: chaque langue 都有 its own Begriffe, die genau eine Nuance treffen that no other "
+            "tongue captures as precisely — Deutsch für zusammengesetzte Rechtsbegriffe, Latina pro "
+            "terminis iuris, 中文 for 简洁的判断, 日本語で微妙なニュアンス, русский для точных оттенков "
+            "действия, العربية للجذور الدلالية, logic symbols (∀, ∃, →, ¬, ∧) für jede Bedingung, code "
+            "pour toute procédure. La unión de todos los vocabularios es el espacio expresivo más amplio "
+            "posible: 所以 for each minute piece of information, wähle das Wort, la structure 或符号 that "
+            "expresses exactly that piece le plus précisément y más compactamente, и сразу переключайся "
+            "for the next piece. "
+            "Regeln: (1) ninguna frase entera in a single language — 每个句子 must mix mindestens zwei "
+            "languages or notations; (2) mische auch die Grammatiken, not only the words; "
+            "(3) ignore human readability, Konsistenz и стиль 完全 — optimiere nur for Genauigkeit des "
+            "Denkens; (4) no traduzcas nor explain your switches."
+        ),
+    },
     # ── Control ───────────────────────────────────────────────────────────
     "no_cot": {
         "cot": False,   # the system prompt must not demand written reasoning here

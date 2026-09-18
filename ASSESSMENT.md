@@ -588,3 +588,96 @@ normally, Esperanto would behave like a natural language. Only the third held.
 
 Same commands queued for gpt-4.1-mini and GPT-5.6 Luna (`run_openai_queue.sh`)
 once the OpenAI account has credit.
+
+## Addendum: the constructed-language grid under prompt v2, four more models (2026-09-17)
+
+Everything above in the constructed-language sections was prompt v1. All new
+runs use prompt v2 (`results_prompt_v2/`, report in `report_v2.txt`,
+per-model paired tests in `report_v2/per_model_conlang.txt`); the v2 rerun of
+GLM-5.3 could not be done because TokenRouter's free GLM channel has been
+returning HTTP 503 all day. Coverage: DeepSeek V4 Flash all 24 conditions;
+GPT-5.6 Luna and Luna-think all 24 (Ithkuil and Lojban capped at 10 samples
+per task, 90 total); gpt-4.1-mini all 24 (Toki Pona, Ithkuil and Lojban
+capped at 90); Claude Haiku 4.5 English, Esperanto and 9 natural languages in
+full, Toki Pona capped at 90, Ithkuil 33 samples (the run was stopped at $74
+of Anthropic credit; the remaining 9 conditions would cost about $60 more).
+
+**Runaway rate and accuracy vs English, same samples, per model** (paired
+McNemar; "terminated Δ" drops runaways on either side):
+
+| model | condition | pairs | runaway | raw Δ | terminated Δ (p) |
+|---|---|---|---|---|---|
+| DeepSeek V4 Flash | esperanto | 1048 | 3.3 % | −1.9 | −0.2 (0.92) |
+| | toki_pona | 1048 | 12.2 % | −11.7 | −3.8 (0.002) |
+| | ithkuil | 1048 | 56.9 % | −44.1 | −3.4 (0.07) |
+| | lojban | 1048 | 67.0 % | −53.1 | −6.4 (0.003) |
+| gpt-4.1-mini | esperanto | 1048 | 0 % | −3.6 | −3.6 (0.001) |
+| | toki_pona | 109 | 83.5 % | −67.0 | −11.1 (0.63) |
+| | ithkuil | 90 | 85.6 % | −65.6 | +7.7 (1.0) |
+| | lojban | 90 | 97.8 % | −77.8 | (2 terminated) |
+| Claude Haiku 4.5 | esperanto | 1048 | 0 % | −0.9 | −0.9 (0.40) |
+| | toki_pona | 89 | 0 % | −12.4 | −12.4 (0.03) |
+| | ithkuil | 33 | 36.4 % | −33.3 | +4.8 (1.0) |
+| GPT-5.6 Luna | esperanto | 1048 | 0 % | −1.4 | −1.4 (0.15) |
+| | toki_pona | 1048 | 0 % | −3.0 | −3.0 (0.002) |
+| | ithkuil / lojban | 90 / 90 | 0 % | +3.3 / −5.6 | n.s. |
+| GPT-5.6 Luna-think | all four | | 0 % | −3.3 … +0.7 | n.s. |
+
+- **The runaway effect replicates on DeepSeek and Haiku and is worse on
+  gpt-4.1-mini.** DeepSeek's rates (Ithkuil 57 %, Lojban 67 %, Toki Pona
+  12 %) are within a few points of GLM's v1 rates; gpt-4.1-mini runs away on
+  84–98 % of the three low-resource conlangs, Haiku on 36 % of Ithkuil but 0 %
+  of Toki Pona. The runaway ordering Lojban ≥ Ithkuil > Toki Pona > Esperanto
+  holds on every model that runs away at all.
+- **GPT-5.6 Luna does not run away, but mostly because it does not comply.**
+  Luna (reasoning off) answers with the bare label and no reasoning on 20–42 %
+  of conlang samples (27 % even in English) and refuses outright on 26 % of
+  Ithkuil ("I cannot provide the requested Ithkuil reasoning"). Luna-think
+  writes short, well-formed Lojban and Toki Pona, but its hidden reasoning
+  channel is on for 100 % of samples, so the visible text is a write-up of a
+  decision already made (see the thinking-on/off addendum). Neither Luna
+  variant is evidence about reasoning *in* these languages.
+- **Terminated accuracy is no longer a clean null.** On DeepSeek, Toki Pona
+  (−3.8, p = 0.002) and Lojban (−6.4, p = 0.003) are below English on the
+  samples where both terminated; Haiku loses 12 points on Toki Pona with no
+  runaways at all (n = 89, p = 0.03). GLM's "identical when terminated" result
+  from v1 was one model. Where the model is strong enough to finish, the
+  cheap conlangs still cost a few points; where it isn't, the cost is the
+  runaway.
+- **What runaways look like.** The new REPETITION section of `analyze.py`
+  (zlib compression ratio and distinct-word count per response) shows the
+  conlang runaways are loops: gpt-4.1-mini's Ithkuil runaways contain a
+  median of 3 distinct words (`Klaţţh-ţhâlţh-ţhâlţh-…` to the token limit,
+  compression ratio 0.003); across models the v2 conlang runaways have a
+  median of 25–39 distinct words and compression ratios 0.014–0.017, against
+  0.44–0.57 for terminated answers and 0.07–0.13 for the rare natural-language
+  runaways, which cycle over 200–300 words. Terminated conlang answers already
+  have a lower distinct/words ratio than English. The pattern fits a small
+  productive vocabulary collapsing into a cycle, not extended reasoning.
+- **Ithkuil parser check (negative result).** `ithkuil_fidelity.py` runs
+  every word through the Ithkuil IV parser from christian-oudard/ithkuil. It
+  cannot measure fidelity: 84 % of the words in *English* reasoning parse as
+  well-formed Ithkuil (the word grammar is that productive; "the", "court"
+  parse), against 65–80 % for the models' Ithkuil. Kept as a record only.
+- **DeepSeek runaways stop at 8,192 tokens**, the server default when no
+  `max_tokens` is sent; Haiku's and gpt-4.1-mini's at 32k. Runaway *rates*
+  are comparable across models, runaway *lengths* are not.
+
+**Polyglot: mandatory language mixing (DeepSeek only, 1,048 samples).**
+A new condition `polyglot` requires, rather than permits, switching language
+or notation within every sentence; the instruction is itself written in nine
+languages plus logic symbols and states the rationale (the union of all
+vocabularies is the broadest expressive space, so use the best tool for each
+piece of information and switch immediately). Prediction recorded before the
+run: accuracy equal to English, more runaways. Result: DeepSeek complies
+(reasoning mixes English, German, French, Spanish, Chinese and logic
+notation; English dominates), runs away on 1.5 % (English 1.0 %), and scores
+−3.5 points vs English (p = 0.005; −4.0, p = 0.001 on terminated pairs).
+`wildcard` on the same model, which merely *permits* mixing and gets pure
+English back, is −4.8 (p = 0.0001). So the "all languages" hypothesis fails
+in the direction predicted: the widest vocabulary buys nothing, and forcing
+the model off its most-practised production register costs a few points.
+One model; the same condition on the other models is cheap and queued for
+when credit allows.
+
+**Cost:** Anthropic $74, OpenAI ≈ $16 of 36, DeepSeek ≈ $9.50 of 20.
