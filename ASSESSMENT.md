@@ -598,9 +598,16 @@ GLM-5.3 could not be done because TokenRouter's free GLM channel has been
 returning HTTP 503 all day. Coverage: DeepSeek V4 Flash all 24 conditions;
 GPT-5.6 Luna and Luna-think all 24 (Ithkuil and Lojban capped at 10 samples
 per task, 90 total); gpt-4.1-mini all 24 (Toki Pona, Ithkuil and Lojban
-capped at 90); Claude Haiku 4.5 English, Esperanto and 9 natural languages in
-full, Toki Pona capped at 90, Ithkuil 33 samples (the run was stopped at $74
-of Anthropic credit; the remaining 9 conditions would cost about $60 more).
+capped at 90); Claude Haiku 4.5 19 conditions in full (all 14 natural
+languages, the three notations, Esperanto, emergent), Toki Pona capped at 90,
+Ithkuil 33 samples, wildcard 42, and no Lojban or no_cot: the queue ran until
+the $74 of Anthropic credit was gone. (An earlier status message in the
+session claimed the Haiku queue had been stopped after 10 conditions; it had
+not, and it ran on to completion of the natural-language grid. Finishing
+Haiku, i.e. no_cot, wildcard and the capped Ithkuil/Lojban, is about $20.)
+Haiku's natural-language result matches the stronger models: no condition
+differs from English after Bonferroni except Japanese (−3.7 on terminated
+pairs).
 
 **Runaway rate and accuracy vs English, same samples, per model** (paired
 McNemar; "terminated Δ" drops runaways on either side):
@@ -680,4 +687,9 @@ the model off its most-practised production register costs a few points.
 One model; the same condition on the other models is cheap and queued for
 when credit allows.
 
-**Cost:** Anthropic $74, OpenAI ≈ $16 of 36, DeepSeek ≈ $9.50 of 20.
+**Follow-up (2026-09-18):** polyglot on GPT-5.6 Luna: −1.1 vs English
+(p = 0.27, 1,037 pairs), no runaways; Luna-think, gpt-4.1-mini and the
+uncapped Luna Ithkuil/Lojban runs were still in progress at the time of
+writing (`results_prompt_v2/openai_finish.log`).
+
+**Cost:** Anthropic $74, OpenAI ≈ $20 of 36, DeepSeek ≈ $9.50 of 20.
