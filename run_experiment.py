@@ -32,6 +32,7 @@ from typing import Dict, List, Optional, Tuple
 from dotenv import load_dotenv
 
 from config import (
+    DEFAULT_PROMPT_VERSION, PROMPT_VERSIONS,
     MODELS, DEFAULT_MODELS, CONDITIONS, PILOT_CONDITIONS, LEGALBENCH_TASKS,
     MAX_TASKS_PER_BENCHMARK, SAMPLE_SEED, NUM_RUNS, MAX_OUTPUT_TOKENS,
     TEMPERATURE, RESULTS_DIR,
@@ -48,16 +49,36 @@ SYSTEM_TEMPLATE = """You are an expert legal analyst. You will be given a legal 
 
 {condition_instruction}
 
-The worked examples show only the final label; for the new instance follow the reasoning instruction above.
+{examples_note}
 When you are done, put your final answer on its own line in exactly this form:
 ANSWER: <label>
-where <label> is one of the allowed labels listed at the end of the task, spelled exactly as listed."""
+where <label> is one of the allowed labels listed at the end of the task, spelled exactly as listed (the labels are English words)."""
+
+# Wording differences between prompt versions (see config.DEFAULT_PROMPT_VERSION).
+EXAMPLES_NOTE_V1 = "The worked examples show only the final label; for the new instance follow the reasoning instruction above."
+EXAMPLES_NOTE_COT = ("The worked examples show only the final label. For the new instance do NOT answer with the "
+                     "label alone: first write out your reasoning as instructed above, then give the answer.")
+EXAMPLES_NOTE_NO_COT = "The worked examples show only the final label; answer the new instance the same way, with no reasoning."
+V1_ANSWER_LANGUAGE_SENTENCE = " Your final answer must still be in English."
+V2_LABEL_NOTE = " (the labels are English words)"
+
+# Set from the CLI (--prompt-version); module-level so build_prompts keeps its signature.
+PROMPT_VERSION = DEFAULT_PROMPT_VERSION
 
 
 def build_prompts(sample: LegalBenchSample, condition_key: str) -> Tuple[str, str]:
     """Build (system_prompt, user_prompt) for a given sample and condition."""
     condition = CONDITIONS[condition_key]
-    system = SYSTEM_TEMPLATE.format(condition_instruction=condition["instruction"])
+    instruction = condition["instruction"]
+    if PROMPT_VERSION == 1:
+        note = EXAMPLES_NOTE_V1
+        if condition.get("cot", True):
+            instruction += V1_ANSWER_LANGUAGE_SENTENCE
+    else:
+        note = EXAMPLES_NOTE_COT if condition.get("cot", True) else EXAMPLES_NOTE_NO_COT
+    system = SYSTEM_TEMPLATE.format(condition_instruction=instruction, examples_note=note)
+    if PROMPT_VERSION == 1:
+        system = system.replace(V2_LABEL_NOTE, "")
     labels = LEGALBENCH_TASKS.get(sample.task, {}).get("labels", [])
     label_line = f"\n\nAnswer with exactly one of: {', '.join(labels)}" if labels else ""
     user = f"{sample.prompt}{label_line}"
@@ -83,8 +104,10 @@ def extract_answer(response_text: str) -> Tuple[str, bool]:
     Return (answer, marker_found).  Looks for the last "ANSWER: x" line
     (also accepts "Answer:", "**ANSWER:**", full-width colon, "A:").
     Falls back to the last non-empty line when no marker is present.
+    A stray ``</think>`` in the visible content (the endpoint sometimes leaks
+    the close tag right before the answer) is treated as a line break.
     """
-    text = response_text or ""
+    text = (response_text or "").replace("</think>", "\n")
     matches = _ANSWER_RE.findall(text)
     if matches:
         return clean_answer(matches[-1]), True
@@ -178,6 +201,10 @@ def summarize_cell(model_key: str, condition_key: str, run_id: int, rows: List[d
         "correct": correct,
         "accuracy": correct / n if n else 0.0,                 # errors count as wrong
         "accuracy_answered": correct / answered if answered else 0.0,
+        "accuracy_complete": (
+            sum(1 for r in rows if r["correct"] and not r.get("truncated") and not r.get("error"))
+            / max(1, sum(1 for r in rows if not r.get("truncated") and not r.get("error")))
+        ),
         "errors": errors,
         "truncated": truncated,
         "answer_marker_missing": marker_missing,
@@ -203,17 +230,20 @@ async def _run_sample(resolved: dict, model_key: str, condition_key: str, run_id
         "task": sample.task, "idx": sample.idx, "condition": condition_key,
         "model": model_key, "run_id": run_id, "expected": sample.label,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "prompt_version": PROMPT_VERSION,
     }
     async with semaphore:
         try:
             resp = await call_model(resolved, system, user,
-                                    max_tokens=MAX_OUTPUT_TOKENS, temperature=TEMPERATURE)
+                                    max_tokens=resolved.get("max_output_tokens", MAX_OUTPUT_TOKENS),
+                                    temperature=TEMPERATURE)
         except Exception as e:  # noqa: BLE001
             return {**base, "predicted_raw": "", "predicted": "", "correct": False,
                     "answer_marker_found": False, "predicted_in_label_set": False,
                     "truncated": False, "finish_reason": "", "error": str(e)[:500],
                     "input_tokens": 0, "output_tokens": 0, "latency_ms": 0, "full_response": "",
-                    "hidden_reasoning": "", "hidden_reasoning_chars": 0, "reasoning_promoted": False}
+                    "hidden_reasoning": "", "hidden_reasoning_chars": 0, "reasoning_promoted": False,
+                    "reasoning_tokens": 0}
 
     raw_pred, marker = extract_answer(resp.content)
     pred = normalize_to_label(raw_pred, labels)
@@ -235,6 +265,7 @@ async def _run_sample(resolved: dict, model_key: str, condition_key: str, run_id
         "hidden_reasoning": resp.reasoning,
         "hidden_reasoning_chars": len(resp.reasoning or ""),
         "reasoning_promoted": resp.reasoning_promoted,
+        "reasoning_tokens": resp.reasoning_tokens,
     }
 
 
@@ -375,7 +406,12 @@ async def run_experiment(model_keys: List[str], condition_keys: List[str], task_
         estimate_cost(model_keys, condition_keys, all_samples, num_runs)
         return
 
-    semaphore = asyncio.Semaphore(max_concurrent)
+    # Per-model semaphore: some hosts (free tiers especially) reject parallel
+    # requests with a hard concurrency error, so a model may cap itself.
+    def _semaphore_for(key: str) -> Tuple[asyncio.Semaphore, int]:
+        cap = MODELS[key].get("max_concurrency")
+        n = min(max_concurrent, cap) if cap else max_concurrent
+        return asyncio.Semaphore(n), n
     summary_file = results_dir / "experiment_summary.json"
     all_summaries: List[dict] = []
     start = time.monotonic()
@@ -401,7 +437,9 @@ async def run_experiment(model_keys: List[str], condition_keys: List[str], task_
 
     try:
         for model_key in model_keys:
-            print(f"\n── Model: {MODELS[model_key]['display']} ──")
+            semaphore, n_conc = _semaphore_for(model_key)
+            note = f" (concurrency capped at {n_conc})" if n_conc != max_concurrent else ""
+            print(f"\n── Model: {MODELS[model_key]['display']}{note} ──")
             for run_id in range(num_runs):
                 for condition_key in condition_keys:
                     try:
@@ -494,7 +532,7 @@ def list_everything():
         print(f"    {k:<16} {v['family']}")
     print("\nTASKS:")
     for k, v in LEGALBENCH_TASKS.items():
-        print(f"    {k:<58} labels={v['labels']} ~n={v['approx_test_size']}")
+        print(f"    {k:<58} labels={v['labels']} test_n={v['test_size']}")
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────
@@ -525,7 +563,11 @@ def main():
     parser.add_argument("--concurrency", type=int, default=5, help="Max concurrent API calls")
     parser.add_argument("--results-dir", type=str, default=RESULTS_DIR)
     parser.add_argument("--fresh", action="store_true", help="Discard existing per-cell results instead of resuming")
+    parser.add_argument("--prompt-version", type=int, choices=list(PROMPT_VERSIONS), default=DEFAULT_PROMPT_VERSION,
+                        help="prompt wording version (see config.py); recorded on every result row")
     args = parser.parse_args()
+    global PROMPT_VERSION
+    PROMPT_VERSION = args.prompt_version
 
     if args.list:
         list_everything()

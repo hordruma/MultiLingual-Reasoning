@@ -170,6 +170,7 @@ cython_debug/
 # Project data & outputs
 data/
 results/
+results_*/
 figures/
 
 # Ruff stuff:

@@ -22,6 +22,8 @@ from providers import resolve_model, build_openai_body, split_reasoning, ConfigE
 # ── extract_answer ───────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("text, expected, marker", [
+    ("因此答案为 No。</think>ANSWER: No", "No", True),
+    ("reasoning</think>\n\nANSWER: Yes", "Yes", True),
     ("reasoning...\nANSWER: Yes", "Yes", True),
     ("reasoning...\nAnswer: no.", "no", True),
     ("**ANSWER:** **Yes**", "Yes", True),
@@ -207,6 +209,28 @@ def test_build_body_default_model():
     assert body["messages"][0] == {"role": "system", "content": "sys"}
 
 
+def test_build_body_omits_max_tokens_when_uncapped():
+    """None must drop the field, not send null: a cap would clip the tail."""
+    for param in ("max_tokens", "max_completion_tokens"):
+        resolved = {"model_id": "m", "max_tokens_param": param, "temperature": "default",
+                    "request_overrides": {}}
+        body = build_openai_body(resolved, "s", "u", None, 0.0)
+        assert "max_tokens" not in body and "max_completion_tokens" not in body
+
+
+def test_uncapped_config_is_actually_uncapped():
+    import config
+    assert config.MAX_OUTPUT_TOKENS is None
+
+
+def test_anthropic_body_still_gets_required_max_tokens():
+    """Anthropic rejects a request without max_tokens, so None needs a fallback."""
+    import inspect, providers
+    src = inspect.getsource(providers._call_anthropic)
+    assert "REQUIRED_MAX_TOKENS_FALLBACK if max_tokens is None else max_tokens" in src
+    assert providers.REQUIRED_MAX_TOKENS_FALLBACK > 16000
+
+
 def test_build_body_gpt56_shape():
     resolved = {"model_id": "gpt-5.6-luna", "max_tokens_param": "max_completion_tokens",
                 "temperature": None, "request_overrides": {"reasoning_effort": "none"}}
@@ -244,7 +268,7 @@ def test_local_model_needs_no_key(monkeypatch):
     import config
     r = resolve_model(config.MODELS["ollama"])
     assert r["api_key"] == "ollama" and r["model_id"] == "qwen3.6:27b"
-    assert r["base_url"] == "http://localhost:11434/v1"
+    assert r["base_url"] == "http://localhost:11434"   # native /api/chat, no /v1
 
 
 # ── review follow-ups ────────────────────────────────────────────────────
@@ -294,3 +318,227 @@ def test_cell_aborts_after_consecutive_errors(tmp_path, monkeypatch):
         asyncio.run(rx.run_cell("mock", resolved, "english", samples, 0, tmp_path, asyncio.Semaphore(2)))
     kept = rx.read_existing(rx.cell_path(tmp_path, "mock", "english", 0))
     assert 3 <= len(kept) < 20
+
+
+# ── rate limiting ────────────────────────────────────────────────────────
+
+def test_rate_limiter_spaces_calls_beyond_the_window():
+    import time as _t
+    from providers import RateLimiter
+
+    async def drive():
+        lim = RateLimiter(rpm=3)
+        lim._times.extend([_t.monotonic() - 59.9] * 3)  # window already full
+        t0 = _t.monotonic()
+        await lim.acquire()
+        return _t.monotonic() - t0
+
+    waited = asyncio.run(drive())
+    assert waited > 0.02, "acquire should wait for the window to free up"
+
+
+def test_rate_limiter_allows_burst_within_limit():
+    from providers import RateLimiter
+
+    async def drive():
+        lim = RateLimiter(rpm=5)
+        for _ in range(5):
+            await lim.acquire()
+        return len(lim._times)
+
+    assert asyncio.run(drive()) == 5
+
+
+def test_resolve_model_carries_rpm():
+    import config
+    r = resolve_model(dict(config.MODELS["tokenrouter"], api_key_default="x"))
+    assert r["requests_per_minute"] == config.MODELS["tokenrouter"]["requests_per_minute"] > 0
+    r2 = resolve_model({"provider": "mock", "model_id": "mock"})
+    assert r2["requests_per_minute"] is None
+
+
+def test_model_concurrency_cap_is_respected():
+    import config
+    assert config.MODELS["tokenrouter"]["max_concurrency"] >= 1
+    src = open("run_experiment.py").read()
+    assert "_semaphore_for" in src and 'MODELS[key].get("max_concurrency")' in src
+
+
+def test_rate_limiter_covers_retries_not_just_first_attempt():
+    """A retry is another request against the quota, so it must be limited too."""
+    import providers
+
+    calls = {"n": 0}
+
+    async def flaky(*a, **k):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise httpx_timeout()
+        return "ok"
+
+    def httpx_timeout():
+        import httpx
+        return httpx.ReadTimeout("boom")
+
+    async def drive():
+        lim = providers.RateLimiter(rpm=100)
+        providers.RETRY_BACKOFF[:] = [0, 0, 0, 0]
+        out = await providers._retry(flaky, _limiter=lim)
+        return out, len(lim._times)
+
+    out, acquired = asyncio.run(drive())
+    assert out == "ok"
+    assert acquired == 3, f"limiter should be acquired once per attempt, got {acquired}"
+
+
+def test_streaming_is_default_and_overridable():
+    import config
+    from providers import resolve_model as rm
+    r = rm(dict(config.MODELS["tokenrouter"], api_key_default="x"))
+    assert r["stream"] is True
+    r2 = rm(dict(config.MODELS["tokenrouter"], api_key_default="x", stream=False))
+    assert r2["stream"] is False
+
+
+def test_stream_body_requests_usage():
+    from providers import build_openai_body
+    resolved = {"model_id": "m", "max_tokens_param": "max_tokens", "temperature": "default",
+                "request_overrides": {}}
+    body = build_openai_body(resolved, "s", "u", None, 0.0)
+    body["stream"] = True
+    body.setdefault("stream_options", {"include_usage": True})
+    assert body["stream_options"]["include_usage"] is True and "max_tokens" not in body
+
+
+def test_read_timeout_is_a_chunk_gap_not_a_call_budget():
+    import providers
+    assert providers.READ_TIMEOUT <= 300, "read timeout must catch stalls quickly"
+    assert providers.TOTAL_TIMEOUT >= 1800, "total budget must allow very long generations"
+
+
+def test_streaming_applies_no_wall_clock_cut():
+    """How long a runaway runs is benchmark data; only silence is a fault."""
+    import inspect, providers
+    src = inspect.getsource(providers._call_openai_compat_stream)
+    assert "MAX_REQUEST_SECONDS" not in src
+    assert not hasattr(providers, "MAX_REQUEST_SECONDS")
+    assert providers.READ_TIMEOUT <= 300   # stalled connections still die fast
+
+
+def test_usage_reasoning_tokens_parsed():
+    import providers
+    assert providers._usage_reasoning_tokens({"completion_tokens": 10}) == 0
+    assert providers._usage_reasoning_tokens(
+        {"completion_tokens": 10, "completion_tokens_details": {"reasoning_tokens": 7}}) == 7
+    assert providers._usage_reasoning_tokens({}) == 0
+
+
+def test_luna_think_pair_shares_model_but_toggles_reasoning():
+    from config import MODELS
+    a, b = MODELS["gpt-5.6-luna"], MODELS["gpt-5.6-luna-think"]
+    assert a["model_id"] == b["model_id"]
+    assert a["request_overrides"]["reasoning_effort"] == "none"
+    assert b["request_overrides"]["reasoning_effort"] != "none"
+    assert a["hidden_reasoning"] == "off" and b["hidden_reasoning"] == "on"
+
+
+def test_thinking_pairs_derived_from_config():
+    import analyze
+    assert analyze.thinking_pairs({"gpt-5.6-luna", "gpt-5.6-luna-think", "tokenrouter"}) == [("gpt-5.6-luna", "gpt-5.6-luna-think")]
+    assert analyze.thinking_pairs({"gpt-5.6-luna", "tokenrouter"}) == []
+
+
+def test_paired_model_test_mcnemar_and_runaway_exclusion():
+    import analyze
+    def row(model, idx, correct, truncated=False):
+        return {"model": model, "condition": "english", "task": "t", "idx": idx, "run_id": 0,
+                "correct": correct, "truncated": truncated, "error": None}
+    rows = []
+    for i in range(10):  # off wrong / on right on 8 samples, 1 tie, 1 runaway on the on-side
+        rows.append(row("off", i, i == 9))
+        rows.append(row("on", i, i < 8 or i == 9, truncated=(i == 8)))
+    raw = analyze.paired_model_test(rows, "off", "on")[0]
+    assert raw["n_pairs"] == 10 and raw["discordant_on_wins"] == 8 and raw["discordant_off_wins"] == 0
+    assert raw["p_mcnemar"] < 0.05 and raw["significant_bonferroni"]
+    exc = analyze.paired_model_test(rows, "off", "on", drop_truncated=True)[0]
+    assert exc["n_pairs"] == 9
+    assert abs(exc["delta_on_minus_off"] - 8 / 9) < 1e-9
+
+
+def test_prompt_versions(monkeypatch):
+    from config import DEFAULT_PROMPT_VERSION
+    assert DEFAULT_PROMPT_VERSION == 1  # every run so far used v1; changing this silently breaks comparability
+    s = data_loader.LegalBenchSample(task="hearsay", idx=0, text="x", label="Yes", prompt="P {{}}")
+    monkeypatch.setattr(rx, "PROMPT_VERSION", 1)
+    v1_cot, _ = rx.build_prompts(s, "mandarin")
+    v1_nocot, _ = rx.build_prompts(s, "no_cot")
+    assert "Your final answer must still be in English." in v1_cot
+    assert "Your final answer must still be in English." not in v1_nocot
+    assert "follow the reasoning instruction above" in v1_cot and "label alone" not in v1_cot
+    assert "labels are English words" not in v1_cot
+    monkeypatch.setattr(rx, "PROMPT_VERSION", 2)
+    v2_cot, _ = rx.build_prompts(s, "mandarin")
+    v2_nocot, _ = rx.build_prompts(s, "no_cot")
+    assert "must still be in English" not in v2_cot
+    assert "do NOT answer with the label alone" in v2_cot and "labels are English words" in v2_cot
+    assert "label alone" not in v2_nocot and "with no reasoning" in v2_nocot
+
+
+def test_prompt_version_of_defaults_to_1():
+    assert analyze.prompt_version_of({}) == 1
+    assert analyze.prompt_version_of({"prompt_version": 2}) == 2
+
+
+def test_select_indices_is_nested_and_canonical_subset_unchanged():
+    import random
+    from data_loader import select_indices, CANONICAL_SUBSET
+    seed = 20240901
+    # the 200-subset every cloud run used must be byte-identical to the original formula
+    assert select_indices(3584, 200, seed) == sorted(random.Random(seed).sample(range(3584), 200))
+    assert select_indices(94, 200, seed) == list(range(94))
+    s200, s50, s30 = (set(select_indices(3584, k, seed)) for k in (200, 50, 30))
+    assert len(s50) == 50 and len(s30) == 30 and s30 < s50 < s200
+    small50 = set(select_indices(94, 50, seed))
+    assert len(small50) == 50 and small50 < set(range(94))
+    assert select_indices(94, 50, seed) == select_indices(94, 50, seed)  # deterministic
+
+
+def test_ollama_native_body_and_resolution(monkeypatch):
+    from config import MODELS
+    import providers
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    r_off = providers.resolve_model(MODELS["qwen3.5-9b"])
+    r_on = providers.resolve_model(MODELS["qwen3.5-9b-think"])
+    r_plain = providers.resolve_model(MODELS["exaone3.5-7.8b"])
+    assert r_off["provider"] == "ollama" and r_off["base_url"] == "http://localhost:11434"
+    b_off = providers.build_ollama_body(r_off, "S", "U", r_off.get("max_output_tokens"), 0.0)
+    b_on = providers.build_ollama_body(r_on, "S", "U", None, 0.0)
+    b_plain = providers.build_ollama_body(r_plain, "S", "U", None, 0.0)
+    assert b_off["think"] is False and b_on["think"] is True and "think" not in b_plain
+    assert b_off["options"] == {"num_predict": 16384, "temperature": 0.0, "num_ctx": 16384}
+    assert b_on["options"]["num_predict"] == -1
+    assert b_off["stream"] is True and [m["role"] for m in b_off["messages"]] == ["system", "user"]
+    assert providers.PROVIDER_MAP["ollama"] is providers._call_ollama
+
+
+def test_constructed_language_conditions_defined():
+    from config import CONDITIONS
+    for key, name in (("ithkuil", "Ithkuil"), ("toki_pona", "Toki Pona"), ("lojban", "Lojban"), ("esperanto", "Esperanto")):
+        c = CONDITIONS[key]
+        assert c["family"] == "Constructed" and c["script"] is None and name in c["instruction"], key
+    c = CONDITIONS["ithkuil"]
+    s = data_loader.LegalBenchSample(task="hearsay", idx=0, text="x", label="Yes", prompt="P {{}}")
+    system, _ = rx.build_prompts(s, "ithkuil")
+    assert "Ithkuil" in system and "ANSWER: <label>" in system
+
+
+def test_repetition_table_separates_loops_from_prose():
+    from analyze import repetition_table
+    prose = "The court held that the statement was offered for its truth, so it is hearsay under the rule."
+    rows = [{"condition": "ithkuil", "truncated": True, "full_response": "vëx šëp " * 4000},
+            {"condition": "ithkuil", "truncated": False, "full_response": prose},
+            {"condition": "ithkuil", "error": "boom", "full_response": ""}]
+    table = {d["subset"]: d for d in repetition_table(rows)}
+    assert table["runaway"]["median_distinct_words"] == 2
+    assert table["runaway"]["median_compression_ratio"] < 0.02 < table["terminated"]["median_compression_ratio"]
+    assert table["runaway"]["n"] == table["terminated"]["n"] == 1

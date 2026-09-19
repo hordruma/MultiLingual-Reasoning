@@ -222,3 +222,474 @@ by tests (38 now):
   `notebook_*.csv`.
 - `reasoning_part` sliced on an upper-cased offset (wrong for ß/ligatures);
   duplicate `.gitignore` entry.
+
+## Addendum: first live run (2026-09-04)
+
+The pipeline was finally executed against a real API (TokenRouter's free
+`z-ai/glm-5.3-free`), which closed the gaps the sandbox could not reach.
+
+**Verified working end to end.** 58 real samples across english / mandarin /
+no_cot / wildcard on hearsay + abercrombie, **zero API errors**. The
+HuggingFace test-split download works and every task matches the sizes in
+`config.py` exactly (94, 50, 109, 139, 95, 95, 379→200, 3584→200, 66 =
+1048 samples). Labels are all in their configured sets, no answer leakage,
+no empty inputs. `analyze.py` and the notebook both run on the real output
+(11 figures, no errors). Resume correctly skipped completed rows.
+
+**The hidden-reasoning confound is confirmed, and it is total for this
+model.** 100 % of samples returned hidden reasoning. In the mandarin
+condition the *visible* reasoning is 78 % Han characters, but the hidden
+channel is only 13 % — it opens "Let me think through this problem carefully
+in Chinese as instructed" in English. The language manipulation reaches the
+write-up, not the thinking. Any model whose `hidden` rate is high must be
+reported separately; it cannot anchor the study.
+
+**The `no_cot` control is invalid for thinking models.** 16/16 no-CoT
+samples still returned hidden reasoning: the model reasons, just invisibly.
+For such models the control measures "CoT hidden vs CoT shown", not
+"reasoning vs no reasoning".
+
+**New limits found and handled:**
+
+- *Rate limit.* The free tier allows 8 requests/minute. Retries absorbed the
+  429s without losing samples, but a sliding-window `RateLimiter` now spaces
+  calls (`requests_per_minute` per model) instead of burning retry budget.
+- *Concurrency limit.* Above ~2 in flight the gateway returns 503
+  "hard concurrency limit reached". Models may now declare `max_concurrency`
+  and the runner clamps `--concurrency` per model.
+- *Truncation.* At 4096 tokens 12 % of english and 25 % of mandarin answers
+  were cut off, confirming the prediction that non-Latin scripts lose their
+  ANSWER line first. Raised to 8192, which cut it to ~10 % on the most
+  verbose condition (wildcard); unused tokens are not billed.
+
+**Throughput reality:** ~15 min for 48 samples at 8 rpm. One model across all
+19 conditions × 1048 samples is roughly 41 hours on this free tier. Fine for
+a pilot, not for the full matrix — use paid endpoints or a local model for
+that.
+
+**Task-design issue:** the real `unfair_tos` test split is 90 % "Other"
+(180/200 sampled), so its majority baseline is 90 % while it consumes 19 % of
+all samples. It contributes little signal and should be dropped or capped
+lower.
+
+## Addendum: output cap removed entirely
+
+Capping output tokens is unsound for this benchmark. A truncated answer loses
+its ANSWER line and is scored wrong, and truncation falls hardest on verbose
+scripts — the exact variable the study manipulates. Measured on live GLM-5.3:
+12% (english) / 25% (mandarin) truncated at 4096, still 8% (english) at 8192,
+with p50=1150 but p90=6649 output tokens.
+
+`MAX_OUTPUT_TOKENS = None` now omits the `max_tokens` field entirely so the
+model stops when it is done. Verified against TokenRouter that omitting it
+substitutes no small default: an uncapped request ran to natural stop at 8228
+completion tokens. Anthropic requires the field, so that adapter falls back to
+`providers.REQUIRED_MAX_TOKENS_FALLBACK`. The HTTP timeout is 1800s, since
+uncapped generation runs at roughly 36 tokens/s.
+
+`truncated` is still recorded and reported: any row that appears now is the
+model hitting its own hard limit, and the report carries an `excl.trunc`
+accuracy column so residual truncation can never masquerade as a language
+effect.
+
+## Current state (end of first full run)
+
+The earlier addenda are an audit trail and mention settings that no longer
+apply (token caps of 4096/8192, a wall-clock deadline). The configuration that
+produced the results is:
+
+- **No output cap** (`MAX_OUTPUT_TOKENS = None`) and **no wall-clock cut**;
+  runaways run to the model's own limit and their length is reported.
+- Streaming with a 120 s chunk-gap timeout, rate limiter and per-model
+  concurrency cap; per-sample resume.
+- Hidden reasoning stored separately and its rate reported per condition.
+
+Analysis code contains no hand-typed model lists or pre-written hypothesis
+verdicts: origin hypotheses derive from `origin_country`, notebook palettes
+from the data, and the findings cell from the exact McNemar tests with
+Bonferroni correction. Test-split sizes in `config.py` are the verified
+HuggingFace sizes.
+
+## Addendum: "reasoning off" on GLM-5.3 (TokenRouter) is not available
+
+The plan was to rerun a subset with thinking disabled to separate the visible
+chain of thought from the hidden one. Probed against the real endpoint:
+
+- `thinking.type=disabled` → HTTP 400 `"GLM-5.3 does not support disabling
+  thinking"` on 5 of 7 identical requests; the other 2 returned 200 with no
+  hidden channel but the same reasoning emitted as visible content, ending in
+  a stray `</think>` right before `ANSWER:` (the gateway routes to more than
+  one upstream and they disagree).
+- `reasoning_effort=none`, `reasoning.enabled=false`, `enable_thinking=false`
+  → accepted, but hidden reasoning still returned (286–431 chars).
+
+So there is no thinking-off condition for this model; the `no_cot` control is
+"no *visible* reasoning" only (hidden reasoning present in 99.9% of rows) and is
+reported as such. A genuine thinking-off comparison needs a model whose
+provider honours the toggle (e.g. DeepSeek V4 Flash, or a local Qwen3 with
+`think=false`), which is a between-model comparison, not within-model.
+
+Side finding: 54 of 19,912 rows in the main run carry a stray `</think>` in the
+visible content (28 of them runaways). `extract_answer` now treats it as a line
+break; rescoring every stored row with the fixed extractor changed the
+`answer_marker_found` flag on 10 rows and no `correct` value.
+
+## Addendum: thinking-on vs thinking-off on GPT-5.6 Luna (2026-09-08)
+
+Because GLM-5.3 cannot disable thinking, the on/off comparison was run on
+GPT-5.6 Luna: `gpt-5.6-luna` (`reasoning_effort: none`, hidden reasoning 0% of
+rows) and `gpt-5.6-luna-think` (`reasoning_effort: low`, hidden reasoning in
+100% of CoT rows). Full matrix, 19 conditions × 1,048 samples × both variants
+(39,824 rows in `results/` together with the GLM run), zero errors, zero
+runaways, about $10 of API spend. Hidden reasoning on OpenAI is reported only
+as `usage.completion_tokens_details.reasoning_tokens`; that count is now stored
+per row (`reasoning_tokens`) and counts as hidden reasoning in the reports.
+
+Findings (per-model, exact McNemar on identical samples, Bonferroni):
+
+- **Hidden reasoning on beats off in 12 of 19 conditions** (+3.3 to +5.4
+  points, all significant) and in none is off better. The gain is nil for
+  `no_cot` (+0.5, n.s.): the "do not reason" instruction also suppresses the
+  hidden channel (reasoning tokens present in 32% of rows vs 100% for CoT
+  conditions), so Luna actually honours it, unlike GLM.
+- **With reasoning on, the language of reasoning does not matter**: every
+  condition lands at 79.3–81.1%, none differs from English; only `no_cot` is
+  significantly worse (−3.0). No runaways at all, unlike GLM.
+- **With reasoning off, the "language effect" is a "did it reason at all"
+  effect.** Luna mostly ignores "show your full reasoning" and emits a bare
+  `ANSWER:` line (median visible output 11 characters in 15 of 19 conditions).
+  Conditions that did elicit some visible text scored higher: Hindi (+5.1 vs
+  English, visible CoT in 67% of rows) and Korean (+4.7, 31%) are significant;
+  English itself had visible CoT in 4% of rows. This is the confound the
+  compliance table exists to expose, and it is why the two studies are
+  reported separately (`analyze.py --models …`).
+- **Script compliance is weak on Luna**: asked to reason in Mandarin it wrote
+  Chinese letters in 2% (off) / 36% (on) of visible text; Hebrew 1% / 70%;
+  Russian 1% / 24%. GLM complied at 80–100%. Luna's visible CoT is a
+  post-hoc summary, usually in English, regardless of instruction.
+- **Origin advantage** (now testable with two models): GLM-5.3's Mandarin
+  delta vs English is −1.0 points against −0.5 for Luna, relative −0.5 → not
+  found.
+
+Reports: `results/report_glm.txt`, `results/report_luna.txt`,
+`results/report_all.txt` (CSVs in matching sub-directories). The notebook runs
+clean on the combined data.
+
+## Addendum: why GPT-5.6 ignored the language instruction (2026-09-08)
+
+The Luna results above looked too tidy, so the runs were audited:
+
+- **The pipeline sent the right request.** The exact body the runner builds
+  (system prompt with the language instruction, user prompt,
+  `reasoning_effort: none`) was posted to OpenAI directly and reproduced the
+  bare `ANSWER:` answers. Stored rows carry the full visible response.
+- **GPT-5.6 obeys the wrong sentence.** Every language instruction in prompt
+  version 1 ends with "Your final answer must still be in English." GPT-5.6
+  reads that as "respond in English" and drops the (Chinese-language)
+  instruction to reason in Chinese. Removing the sentence makes Luna reason in
+  Chinese (82 % of letters, reasoning on); adding "do NOT answer with the label
+  alone" makes it do so with reasoning off as well (100 % of probes).
+- **Not a size effect.** gpt-5.6-sol and gpt-5.6-terra probed with the same
+  prompt: 0 % Chinese, mostly bare labels, identical to Luna.
+- **Other models are fine with the same wording.** GLM-5.3 wrote the requested
+  script in 79–100 % of rows; gpt-4.1-mini wrote a chain of thought on every
+  probe, 80–91 % in the requested script, under both prompt versions.
+- **Temperature.** The config claimed GPT-5.x rejects temperature. That is
+  only true with reasoning on; with `reasoning_effort: none` temperature 0 is
+  accepted. The v1 Luna-off run therefore sampled at the default 1.0 while GLM
+  ran at 0. Fixed (`temperature: 0.0` on `gpt-5.6-luna`). Even at temperature 0
+  Luna flips between "label only" and "reason" on identical input.
+- **Consequence for the v1 Luna study:** with reasoning off, the language
+  conditions differed mainly in how often they provoked any reasoning at all
+  (Hindi 67 % of rows, English 4 %); when Luna did reason in the requested
+  script its accuracy was ~89 %. Those numbers measure instruction compliance,
+  not reasoning language, and are kept only as a documented negative result.
+
+Changes: prompt wording is now versioned (`--prompt-version`, default 1 = the
+original, so all earlier data stays comparable; version 2 removes the English
+sentence and forbids label-only answers). Every row records `prompt_version`;
+`analyze.py` warns when versions are pooled and takes `--prompt-version`.
+Non-reasoning models `gpt-4.1-mini` / `gpt-4.1-nano` were added: no hidden
+channel at all, so their visible chain of thought is the reasoning.
+
+Runs launched (results in the next addendum): gpt-4.1-mini, prompt v1, all 19 conditions (`results/`);
+GPT-5.6 Luna reasoning off (temperature 0) and on (low), prompt v2, all 19
+conditions (`results_prompt_v2/`).
+
+## Addendum: results of the corrected runs (2026-09-08)
+
+Two runs completed after the audit, both 19 conditions × 1,048 samples, zero
+errors, temperature 0 where the API allows it:
+
+- **gpt-4.1-mini, prompt v1** (no reasoning mode exists; `results/`,
+  $16.36). Compliance near-perfect: marker in 99.9 % of rows, requested script
+  66–100 %, runaways 0.0–0.1 %.
+- **GPT-5.6 Luna reasoning off (temperature 0) and on (low), prompt v2**
+  (`results_prompt_v2/`, $11.85). Compliance now acceptable: with reasoning
+  off Luna wrote a chain of thought in 58–98 % of rows per condition (English
+  73 %; under v1 it was 4 %), with reasoning on 98–100 %; requested script
+  66–100 % (off) and 77–100 % (on).
+
+Findings, per model, exact McNemar vs English on identical samples, Bonferroni
+over 18:
+
+- **gpt-4.1-mini: the language of the visible chain of thought matters.**
+  9 of 18 conditions are significantly worse than English: Finnish −3.7,
+  Hebrew −3.9, Mandarin −4.8, pseudocode −5.0, formal logic −5.0, Korean −5.5,
+  Japanese −6.3, Arabic −6.4, Hindi −8.2 points. Nothing beats English. This
+  is not a compliance artefact: Hindi rows actually written in Devanagari
+  scored 68.7 % against 54.3 % for the few that drifted into English. The
+  damage concentrates in the label-imbalanced tasks (contract_nli explicit
+  identification 61 % → 29 %).
+- **GPT-5.6 Luna, both modes: no language effect.** No condition differs from
+  English in either variant (all |Δ| ≤ 2.7, none significant). Only `no_cot`
+  is consistently lower (−2.2 off, −2.0 on; pooled −2.1, p = 0.0029, just
+  outside the Bonferroni threshold).
+- **Reasoning on vs off on Luna, done right: no difference.** With prompt v2
+  the on/off deltas are −2.1 to +2.2 points and none is significant. The
+  +3 to +5 point "reasoning-on advantage" of the v1 run was entirely the
+  compliance artefact documented above (v1 reasoning-off did not reason at
+  all). Once Luna writes a visible chain of thought, low-effort hidden
+  reasoning adds nothing measurable.
+- **GLM-5.3 (reasoning cannot be disabled): no language effect on accuracy
+  once runaways are excluded**, but a language effect on *termination*:
+  English 1.8 % runaways vs 3–7 % for every other natural language.
+- **Training-origin hypothesis**: GLM's Mandarin delta vs English is −1.0
+  against −2.3 for the other models (relative +1.3) → not found.
+
+Interpretation, stated carefully: the one model that shows a large language
+effect (gpt-4.1-mini) is also the oldest and weakest. Luna with reasoning off
+is likewise a non-reasoning mode, and shows none. So the data do not support
+"visible reasoning is language-sensitive, hidden reasoning is not"; they are
+equally consistent with newer models simply being more robust to the reasoning
+language. Separating those needs a stronger non-reasoning model
+(gpt-4.1 at ~$45 a run) or an older reasoning model.
+
+Spend on the OpenAI account: about $40 in total (Luna v1 $9.9, probes ~$1,
+gpt-4.1-mini $16.4, Luna v2 $11.9). Reports: `results/report_gpt41mini.txt`,
+`results_prompt_v2/report_luna_v2.txt`, `results/report_all.txt` (v1 rows,
+four models).
+
+## Addendum: language-native local models (2026-09-08)
+
+Ollama 0.33.3 installed in user space (no root) on the RTX 5060 laptop (8 GB
+VRAM), 16k context.  Because Ollama's OpenAI-compatible endpoint ignores
+`think` (verified: `think: false` still produced 8–14k characters of hidden
+reasoning on qwen3.5:9b) and cannot set `num_ctx`, local models use a native
+`/api/chat` provider (`provider: "ollama"`), which honours the thinking toggle
+and streams hidden reasoning separately.  Local models carry an output ceiling
+equal to the context window (16,384 tokens): past it Ollama shifts context and
+emits garbage (Nanda produced two 81,920-token runaways of 48 minutes each
+before the ceiling existed).  Small `--max-samples` subsets are now nested
+inside the canonical 200-per-task subset, so a 50-per-task local run scores
+samples the cloud models also scored.
+
+Probed on real prompts (2 samples × English, home language, no_cot):
+
+| model | home | speed | verdict |
+|---|---|---|---|
+| Qwen3.5 9B (Alibaba) | Mandarin | 54 tok/s; thinking off ≈10 s/call, on ≈50 s | usable; Mandarin CoT 67 % under prompt v2 (0–44 % under v1); thinking toggle works natively |
+| Llama-3.1-Swallow 8B v0.5 (Tokyo Tech) | Japanese | 50 tok/s | usable under v2 only (Japanese 39–71 %; English under v1) |
+| EXAONE 3.5 7.8B (LG) | Korean | 60 tok/s | runs, but reasons in English under both prompt versions (0 % Hangul); kept as a compliance data point |
+| Llama-3-Nanda 10B (MBZUAI) | Hindi | 38 tok/s | unusable: raw GGUF has no chat template; with a ChatML template it still echoes the prompt and gives no marker |
+| ALLaM 7B preview (SDAIA) | Arabic | – | unusable: empty outputs, `<\|im` leaks, no marker |
+| Sarvam-M 24B (Sarvam AI) | Hindi | 4 tok/s (spills to RAM) | unusable: 2–6 min per call, reasons in English for Hindi, ignores no_cot |
+| Fanar-1 9B (QCRI) | Arabic | 8 tok/s | reasons in English for Arabic (0 %), runaways; dropped |
+| Falcon-H1-Arabic 7B (TII) | Arabic | – | official GGUF is gated on Hugging Face; not tried |
+
+Pattern worth stating: every small language-native fine-tune except Qwen and
+Swallow reasons in English on an English-language task even when the
+instruction is written in its home language.  A within-model home-language
+test on those models would need the task text translated, which is a different
+experiment.
+
+Run in progress (`run_local_native.sh`, `results_prompt_v2/`): Qwen3.5 9B
+thinking off, Swallow, EXAONE on the same 7 conditions (English, no_cot,
+Mandarin, Japanese, Korean, Hindi, Arabic), then Qwen3.5 thinking on
+(English, no_cot, Mandarin); 50 samples per task, prompt v2, temperature 0,
+one generation at a time.  GPT-5.6 Luna v2 in the same directory is the
+non-native comparison under an identical prompt.
+
+## Addendum: Ithkuil condition (2026-09-10)
+
+A 20th condition, `ithkuil` (family "Constructed"): reason in Ithkuil, the
+conlang engineered for maximal precision and minimal ambiguity. It is the
+extreme of the "precise notation helps" hypothesis, and since no model has
+real Ithkuil fluency it also tests what the *attempt* does. Instruction in
+English (an Ithkuil instruction would not be understood); no script check.
+
+**GLM-5.3, prompt v1, all 1,048 samples, zero errors after a resume pass:**
+
+- Runaway (non-terminating) rate **54.1 %** vs 1.8 % in English. Paired
+  McNemar on the runaway flag: 555 samples ran away in Ithkuil where English
+  terminated, 7 the other way, p ≈ 5×10⁻¹⁵⁴, the strongest effect in the study.
+- Raw accuracy −38.2 points vs English (p ≈ 4×10⁻⁹⁷), entirely the runaways.
+- On the 474 samples where both terminated: 84.4 % vs 84.2 %, identical. The
+  hidden channel carried the answer; the visible Ithkuil-shaped text did not
+  add or subtract anything.
+- Cost: median 33k output tokens per answer (English 4.3k), runaways median
+  51k and up to 83k tokens (20–40 minutes each), plus a median 116k
+  characters of hidden reasoning. About 8× the tokens of English for the same
+  accuracy when it worked, and no answer at all more than half the time.
+
+Against the other notations on GLM (emergent −0.4, pseudocode −0.6, formal
+logic −1.2 excl. runaways, all noise, runaway rates 1–5 %) this is a different
+failure mode, not a bigger version of the same one.
+
+**gpt-4.1-mini, prompt v1, partial (75 samples answered before the OpenAI
+account ran out of credit):** 69 of 75 ran away, looping pseudo-Ithkuil
+(`Vëxšëpšëx, vëxšëpšëx, …`) to the model's 32,768-token limit, ~3.5 minutes
+each; accuracy 8 % vs 91 % for English on the same samples. GPT-5.6 Luna
+(prompt v2): not started, 10 credit errors. Both resume with the same
+commands once credit is added (`run_experiment.py --conditions ithkuil`).
+
+Interpretation: the precision-language hypothesis inverts on both models
+reached. Asked to reason in a maximally precise language it cannot produce,
+the model generates language-shaped output until it hits a ceiling, and the
+metric that moves is termination, not accuracy.
+
+## Addendum: the constructed-language grid (2026-09-10)
+
+Ithkuil confounds two things: maximal precision and the model's lack of
+fluency. Three more conditions separate them: **Lojban** (unambiguous logical
+grammar, decent web corpus), **Toki Pona** (~130 words, deliberately vague,
+well known to models: Ithkuil's opposite) and **Esperanto** (regular,
+natural-like, very well known). GLM-5.3, prompt v1, 1,048 samples each,
+paired against English on the same samples:
+
+| condition | runaway | p (runaway vs English) | acc when terminated (vs English) | tokens/answer (median) | hidden chars |
+|---|---|---|---|---|---|
+| english | 1.8 % | – | – | 1.0k | 3.2k |
+| esperanto | 3.5 % | 0.01 | 86.3 % vs 85.9 % (+0.4, p = 0.64) | 1.4k | 3.5k |
+| toki_pona | 24.2 % | 10⁻⁶⁰ | 87.4 % vs 88.4 % (−1.0, p = 0.06) | 6.4k | 19k |
+| ithkuil | 54.1 % | 10⁻¹⁵⁴ | 84.4 % vs 84.2 % (+0.2, p = 1.0) | 33k | 116k |
+| lojban | 75.1 % | 10⁻²²⁷ | 85.7 % vs 85.7 % (0.0, p = 1.0) | 66k (at the ceiling) | 205k |
+
+Predictions recorded before the data: Lojban would run away far less than
+Ithkuil (fluency, not precision, as the cause), Toki Pona would terminate
+normally, Esperanto would behave like a natural language. Only the third held.
+
+- Lojban is the worst condition in the study, worse than Ithkuil, although the
+  model plainly knows it (the terminated output is well-formed Lojban). So
+  fluency is not what drives the runaways, and neither is precision alone:
+  Toki Pona, the least precise language possible, runs away 13× as often as
+  English while being written correctly (median 84 % of words from the
+  lexicon).
+- On every conlang, accuracy on terminated samples is indistinguishable from
+  English. Four conditions, four null results on correctness, four enormous
+  effects on termination. The token cost ladder is Esperanto 1.4×, Toki Pona
+  6×, Ithkuil 33×, Lojban 66× English, for no accuracy gain anywhere.
+- What the four share is being a language the model *produces* far less
+  fluently than it *recognises*; production quality tracks corpus size
+  (Esperanto ≫ Toki Pona > Lojban ≈ Ithkuil) and so does the runaway rate,
+  except that Lojban's unambiguous grammar seems to make matters worse rather
+  than better. A production-fluency explanation fits; a precision explanation
+  does not.
+
+Same commands queued for gpt-4.1-mini and GPT-5.6 Luna (`run_openai_queue.sh`)
+once the OpenAI account has credit.
+
+## Addendum: the constructed-language grid under prompt v2, four more models (2026-09-17)
+
+Everything above in the constructed-language sections was prompt v1. All new
+runs use prompt v2 (`results_prompt_v2/`, report in `report_v2.txt`,
+per-model paired tests in `report_v2/per_model_conlang.txt`); the v2 rerun of
+GLM-5.3 could not be done because TokenRouter's free GLM channel has been
+returning HTTP 503 all day. Coverage: DeepSeek V4 Flash all 24 conditions;
+GPT-5.6 Luna and Luna-think all 24 (Ithkuil and Lojban capped at 10 samples
+per task, 90 total); gpt-4.1-mini all 24 (Toki Pona, Ithkuil and Lojban
+capped at 90); Claude Haiku 4.5 19 conditions in full (all 14 natural
+languages, the three notations, Esperanto, emergent), Toki Pona capped at 90,
+Ithkuil 33 samples, wildcard 42, and no Lojban or no_cot: the queue ran until
+the $74 of Anthropic credit was gone. (An earlier status message in the
+session claimed the Haiku queue had been stopped after 10 conditions; it had
+not, and it ran on to completion of the natural-language grid. Finishing
+Haiku, i.e. no_cot, wildcard and the capped Ithkuil/Lojban, is about $20.)
+Haiku's natural-language result matches the stronger models: no condition
+differs from English after Bonferroni except Japanese (−3.7 on terminated
+pairs).
+
+**Runaway rate and accuracy vs English, same samples, per model** (paired
+McNemar; "terminated Δ" drops runaways on either side):
+
+| model | condition | pairs | runaway | raw Δ | terminated Δ (p) |
+|---|---|---|---|---|---|
+| DeepSeek V4 Flash | esperanto | 1048 | 3.3 % | −1.9 | −0.2 (0.92) |
+| | toki_pona | 1048 | 12.2 % | −11.7 | −3.8 (0.002) |
+| | ithkuil | 1048 | 56.9 % | −44.1 | −3.4 (0.07) |
+| | lojban | 1048 | 67.0 % | −53.1 | −6.4 (0.003) |
+| gpt-4.1-mini | esperanto | 1048 | 0 % | −3.6 | −3.6 (0.001) |
+| | toki_pona | 109 | 83.5 % | −67.0 | −11.1 (0.63) |
+| | ithkuil | 90 | 85.6 % | −65.6 | +7.7 (1.0) |
+| | lojban | 90 | 97.8 % | −77.8 | (2 terminated) |
+| Claude Haiku 4.5 | esperanto | 1048 | 0 % | −0.9 | −0.9 (0.40) |
+| | toki_pona | 89 | 0 % | −12.4 | −12.4 (0.03) |
+| | ithkuil | 33 | 36.4 % | −33.3 | +4.8 (1.0) |
+| GPT-5.6 Luna | esperanto | 1048 | 0 % | −1.4 | −1.4 (0.15) |
+| | toki_pona | 1048 | 0 % | −3.0 | −3.0 (0.002) |
+| | ithkuil / lojban | 90 / 90 | 0 % | +3.3 / −5.6 | n.s. |
+| GPT-5.6 Luna-think | all four | | 0 % | −3.3 … +0.7 | n.s. |
+
+- **The runaway effect replicates on DeepSeek and Haiku and is worse on
+  gpt-4.1-mini.** DeepSeek's rates (Ithkuil 57 %, Lojban 67 %, Toki Pona
+  12 %) are within a few points of GLM's v1 rates; gpt-4.1-mini runs away on
+  84–98 % of the three low-resource conlangs, Haiku on 36 % of Ithkuil but 0 %
+  of Toki Pona. The runaway ordering Lojban ≥ Ithkuil > Toki Pona > Esperanto
+  holds on every model that runs away at all.
+- **GPT-5.6 Luna does not run away, but mostly because it does not comply.**
+  Luna (reasoning off) answers with the bare label and no reasoning on 20–42 %
+  of conlang samples (27 % even in English) and refuses outright on 26 % of
+  Ithkuil ("I cannot provide the requested Ithkuil reasoning"). Luna-think
+  writes short, well-formed Lojban and Toki Pona, but its hidden reasoning
+  channel is on for 100 % of samples, so the visible text is a write-up of a
+  decision already made (see the thinking-on/off addendum). Neither Luna
+  variant is evidence about reasoning *in* these languages.
+- **Terminated accuracy is no longer a clean null.** On DeepSeek, Toki Pona
+  (−3.8, p = 0.002) and Lojban (−6.4, p = 0.003) are below English on the
+  samples where both terminated; Haiku loses 12 points on Toki Pona with no
+  runaways at all (n = 89, p = 0.03). GLM's "identical when terminated" result
+  from v1 was one model. Where the model is strong enough to finish, the
+  cheap conlangs still cost a few points; where it isn't, the cost is the
+  runaway.
+- **What runaways look like.** The new REPETITION section of `analyze.py`
+  (zlib compression ratio and distinct-word count per response) shows the
+  conlang runaways are loops: gpt-4.1-mini's Ithkuil runaways contain a
+  median of 3 distinct words (`Klaţţh-ţhâlţh-ţhâlţh-…` to the token limit,
+  compression ratio 0.003); across models the v2 conlang runaways have a
+  median of 25–39 distinct words and compression ratios 0.014–0.017, against
+  0.44–0.57 for terminated answers and 0.07–0.13 for the rare natural-language
+  runaways, which cycle over 200–300 words. Terminated conlang answers already
+  have a lower distinct/words ratio than English. The pattern fits a small
+  productive vocabulary collapsing into a cycle, not extended reasoning.
+- **Ithkuil parser check (negative result).** `ithkuil_fidelity.py` runs
+  every word through the Ithkuil IV parser from christian-oudard/ithkuil. It
+  cannot measure fidelity: 84 % of the words in *English* reasoning parse as
+  well-formed Ithkuil (the word grammar is that productive; "the", "court"
+  parse), against 65–80 % for the models' Ithkuil. Kept as a record only.
+- **DeepSeek runaways stop at 8,192 tokens**, the server default when no
+  `max_tokens` is sent; Haiku's and gpt-4.1-mini's at 32k. Runaway *rates*
+  are comparable across models, runaway *lengths* are not.
+
+**Polyglot: mandatory language mixing (DeepSeek only, 1,048 samples).**
+A new condition `polyglot` requires, rather than permits, switching language
+or notation within every sentence; the instruction is itself written in nine
+languages plus logic symbols and states the rationale (the union of all
+vocabularies is the broadest expressive space, so use the best tool for each
+piece of information and switch immediately). Prediction recorded before the
+run: accuracy equal to English, more runaways. Result: DeepSeek complies
+(reasoning mixes English, German, French, Spanish, Chinese and logic
+notation; English dominates), runs away on 1.5 % (English 1.0 %), and scores
+−3.5 points vs English (p = 0.005; −4.0, p = 0.001 on terminated pairs).
+`wildcard` on the same model, which merely *permits* mixing and gets pure
+English back, is −4.8 (p = 0.0001). So the "all languages" hypothesis fails
+in the direction predicted: the widest vocabulary buys nothing, and forcing
+the model off its most-practised production register costs a few points.
+One model; the same condition on the other models is cheap and queued for
+when credit allows.
+
+**Follow-up (2026-09-18):** polyglot on GPT-5.6 Luna: −1.1 vs English
+(p = 0.27, 1,037 pairs), no runaways; Luna-think, gpt-4.1-mini and the
+uncapped Luna Ithkuil/Lojban runs were still in progress at the time of
+writing (`results_prompt_v2/openai_finish.log`).
+
+**Cost:** Anthropic $74, OpenAI ≈ $20 of 36, DeepSeek ≈ $9.50 of 20.

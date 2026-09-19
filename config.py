@@ -28,8 +28,10 @@ Counts (kept honest – see ASSESSMENT.md):
 #   temperature       – model-level override; None omits the field (some
 #                       models reject it)
 #   hidden_reasoning  – "off" (disabled by request_overrides), "minimal"
-#                       (lowest setting the API allows), "cannot_disable", or
-#                       "n/a" (model has no thinking mode). See the note below.
+#                       (lowest setting the API allows), "on" (deliberately
+#                       enabled, for a thinking-on/off comparison),
+#                       "cannot_disable", or "n/a" (model has no thinking
+#                       mode). See the note below.
 #   price_in/out      – USD per 1M tokens, ONLY used by `--estimate`. Taken
 #                       from public price lists in early September 2026;
 #                       verify against the provider before a paid run.
@@ -54,9 +56,59 @@ MODELS = {
         "base_url": "https://api.openai.com/v1",
         "request_overrides": {"reasoning_effort": "none"},
         "max_tokens_param": "max_completion_tokens",
-        "temperature": None,            # GPT-5.x rejects temperature
+        # With reasoning_effort "none" GPT-5.x accepts temperature (verified
+        # 2026-09-08); with reasoning on it rejects anything but the default 1.
+        "temperature": 0.0,
         "hidden_reasoning": "off",
         "price_in": 0.20, "price_out": 1.20,
+    },
+    # Same model with hidden reasoning ON: the paired counterpart for the
+    # thinking-on vs thinking-off comparison (GLM-5.3 cannot disable thinking,
+    # so that comparison has to be made on a model whose provider honours it).
+    "gpt-5.6-luna-think": {
+        "provider": "openai_compat",
+        "model_id": "gpt-5.6-luna",
+        "display": "GPT-5.6 Luna, reasoning on/low (OpenAI)",
+        "origin_country": "USA",
+        "api_key_env": "OPENAI_API_KEY",
+        "base_url_env": "OPENAI_BASE_URL",
+        "base_url": "https://api.openai.com/v1",
+        "request_overrides": {"reasoning_effort": "low"},   # small budget: cheapest non-zero effort
+        "max_tokens_param": "max_completion_tokens",
+        "temperature": None,            # reasoning on: only the default temperature is accepted
+        "hidden_reasoning": "on",
+        "price_in": 0.20, "price_out": 1.20,
+    },
+    # Non-reasoning models: no hidden channel at all, so the visible chain of
+    # thought IS the reasoning. The cleanest test of the hypothesis; temperature 0
+    # is honoured. gpt-4.1 itself is ~$45 for a full run, hence mini/nano here.
+    "gpt-4.1-mini": {
+        "provider": "openai_compat",
+        "model_id": "gpt-4.1-mini",
+        "display": "GPT-4.1 mini, no reasoning mode (OpenAI)",
+        "origin_country": "USA",
+        "api_key_env": "OPENAI_API_KEY",
+        "base_url_env": "OPENAI_BASE_URL",
+        "base_url": "https://api.openai.com/v1",
+        "request_overrides": {},
+        "max_tokens_param": "max_completion_tokens",
+        "temperature": 0.0,
+        "hidden_reasoning": "n/a",
+        "price_in": 0.40, "price_out": 1.60,
+    },
+    "gpt-4.1-nano": {
+        "provider": "openai_compat",
+        "model_id": "gpt-4.1-nano",
+        "display": "GPT-4.1 nano, no reasoning mode (OpenAI)",
+        "origin_country": "USA",
+        "api_key_env": "OPENAI_API_KEY",
+        "base_url_env": "OPENAI_BASE_URL",
+        "base_url": "https://api.openai.com/v1",
+        "request_overrides": {},
+        "max_tokens_param": "max_completion_tokens",
+        "temperature": 0.0,
+        "hidden_reasoning": "n/a",
+        "price_in": 0.10, "price_out": 0.40,
     },
     "gemini-3.1-flash-lite": {
         "provider": "openai_compat",
@@ -202,6 +254,12 @@ MODELS = {
         "base_url": "https://api.tokenrouter.com/v1",
         "request_overrides": {"reasoning_effort": "low"},
         "hidden_reasoning": "cannot_disable",
+        # Measured on the free tier 2026-09-04: "Maximum 8 requests within 1
+        # minutes". The runner spaces calls to this instead of burning retries.
+        "requests_per_minute": 7,
+        # The free gateway also rejects parallel requests with
+        # "hard concurrency limit reached" (503) above ~2 in flight.
+        "max_concurrency": 48,
         "price_in": 0.0, "price_out": 0.0,   # free tier; set real prices if that changes
     },
 
@@ -211,8 +269,176 @@ MODELS = {
     # Ollama's /v1 endpoint accepts reasoning_effort "none" to disable
     # thinking on qwen3.x; Gemma 4 is known to return its text in the
     # reasoning field on that endpoint (handled: it is promoted to content).
+    # ── Language-native local models (Ollama, free) ─────────────────────
+    # Each was continued-pre-trained or instruction-tuned on its home language.
+    # Used for the training-origin test on a 4-condition subset (english, the
+    # home language, no_cot, mandarin); see ASSESSMENT.md.  All fit the 8 GB
+    # GPU at Q4_K_M.  origin_country feeds analyze.ORIGIN_LANGUAGE.
+    "qwen3.5-9b": {
+        "provider": "ollama",
+        "model_id": "qwen3.5:9b",
+        "display": "Qwen3.5 9B, thinking off (Alibaba, local)",
+        "origin_country": "China",
+        "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
+        "request_overrides": {"think": False},
+        "temperature": 0.0,
+        "num_ctx": 16384,
+        "max_output_tokens": 16384,  # = context window: past it Ollama shifts context and emits garbage
+        "hidden_reasoning": "off",
+        "max_concurrency": 1,   # OLLAMA_NUM_PARALLEL=1: one generation at a time on the 8 GB GPU
+        "price_in": 0.0, "price_out": 0.0,
+    },
+    "qwen3.5-9b-think": {
+        "provider": "ollama",
+        "model_id": "qwen3.5:9b",
+        "display": "Qwen3.5 9B, thinking on (Alibaba, local)",
+        "origin_country": "China",
+        "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
+        "request_overrides": {"think": True},
+        "temperature": 0.0,
+        "num_ctx": 16384,
+        "max_output_tokens": 16384,  # = context window: past it Ollama shifts context and emits garbage
+        "hidden_reasoning": "on",
+        "max_concurrency": 1,   # OLLAMA_NUM_PARALLEL=1: one generation at a time on the 8 GB GPU
+        "price_in": 0.0, "price_out": 0.0,
+    },
+    "exaone3.5-7.8b": {
+        "provider": "ollama",
+        "model_id": "exaone3.5:7.8b",
+        "display": "EXAONE 3.5 7.8B (LG AI Research, Korean, local)",
+        "origin_country": "South Korea",
+        "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
+        "request_overrides": {},
+        "temperature": 0.0,
+        "num_ctx": 16384,
+        "max_output_tokens": 16384,  # = context window: past it Ollama shifts context and emits garbage
+        "hidden_reasoning": "n/a",
+        "max_concurrency": 1,   # OLLAMA_NUM_PARALLEL=1: one generation at a time on the 8 GB GPU
+        "price_in": 0.0, "price_out": 0.0,
+    },
+    "swallow-8b": {
+        "provider": "ollama",
+        "model_id": "hf.co/okamototk/Llama-3.1-Swallow-8B-Instruct-v0.5-gguf:Q4_K_M",
+        "display": "Llama-3.1-Swallow 8B v0.5 (Tokyo Tech, Japanese, local)",
+        "origin_country": "Japan",
+        "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
+        "request_overrides": {},
+        "temperature": 0.0,
+        "num_ctx": 16384,
+        "max_output_tokens": 16384,  # = context window: past it Ollama shifts context and emits garbage
+        "hidden_reasoning": "n/a",
+        "max_concurrency": 1,   # OLLAMA_NUM_PARALLEL=1: one generation at a time on the 8 GB GPU
+        "price_in": 0.0, "price_out": 0.0,
+    },
+    "allam-7b": {
+        "provider": "ollama",
+        "model_id": "hf.co/bartowski/ALLaM-AI_ALLaM-7B-Instruct-preview-GGUF:Q4_K_M",
+        "display": "ALLaM 7B Instruct preview (SDAIA, Arabic, local)",
+        "origin_country": "Saudi Arabia",
+        "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
+        "request_overrides": {},
+        "temperature": 0.0,
+        "num_ctx": 16384,
+        "max_output_tokens": 16384,  # = context window: past it Ollama shifts context and emits garbage
+        "hidden_reasoning": "n/a",
+        "max_concurrency": 1,   # OLLAMA_NUM_PARALLEL=1: one generation at a time on the 8 GB GPU
+        "price_in": 0.0, "price_out": 0.0,
+    },
+    "nanda-10b": {
+        "provider": "ollama",
+        "model_id": "nanda-10b-chatml",   # `ollama create` from the HF GGUF with a ChatML template + stop tokens (the raw GGUF has no template)
+        "display": "Llama-3-Nanda 10B Chat (MBZUAI, Hindi, local)",
+        "origin_country": "India",
+        "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
+        "request_overrides": {},
+        "temperature": 0.0,
+        "num_ctx": 16384,
+        "max_output_tokens": 16384,  # = context window: past it Ollama shifts context and emits garbage
+        "hidden_reasoning": "n/a",
+        "max_concurrency": 1,   # OLLAMA_NUM_PARALLEL=1: one generation at a time on the 8 GB GPU
+        "price_in": 0.0, "price_out": 0.0,
+    },
+    # Second wave (Hindi / Arabic replacements for the unusable Nanda / ALLaM).
+    "sarvam-m": {
+        "provider": "ollama",
+        "model_id": "hf.co/lmstudio-community/sarvam-m-GGUF:Q4_K_M",
+        "display": "Sarvam-M 24B (Sarvam AI, Hindi/Indic, local; needs ~16 GB VRAM)",
+        "origin_country": "India",
+        "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
+        "request_overrides": {},
+        "temperature": 0.0,
+        "num_ctx": 16384,
+        "max_output_tokens": 16384,
+        "hidden_reasoning": "unknown",   # Mistral-Small based; may emit <think> blocks, which split_reasoning separates
+        "max_concurrency": 1,
+        "price_in": 0.0, "price_out": 0.0,
+    },
+    "fanar-1-9b": {
+        "provider": "ollama",
+        # Falcon-H1-Arabic's official GGUF is gated on Hugging Face; Fanar (QCRI,
+        # Gemma-2 based, 1T Arabic/English continued pre-training) is open.
+        "model_id": "hf.co/mradermacher/Fanar-1-9B-Instruct-GGUF:Q4_K_M",
+        "display": "Fanar-1 9B Instruct (QCRI, Arabic, local)",
+        "origin_country": "Qatar",
+        "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
+        "request_overrides": {},
+        "temperature": 0.0,
+        "num_ctx": 16384,
+        "max_output_tokens": 16384,
+        "hidden_reasoning": "n/a",
+        "max_concurrency": 1,
+        "price_in": 0.0, "price_out": 0.0,
+    },
+    # ── DGX-class local models (see HANDOFF_LOCAL.md) ─────────────────────
+    # Bigger versions of the same families for a machine with real VRAM.
+    # Verify each tag with `ollama pull` first; HF GGUF repos come and go.
+    "qwen3.6-27b": {
+        "provider": "ollama", "model_id": "qwen3.6:27b",
+        "display": "Qwen3.6 27B, thinking off (Alibaba, local)", "origin_country": "China",
+        "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
+        "request_overrides": {"think": False}, "temperature": 0.0,
+        "num_ctx": 16384, "max_output_tokens": 16384, "hidden_reasoning": "off",
+        "max_concurrency": 4, "price_in": 0.0, "price_out": 0.0,
+    },
+    "qwen3.6-27b-think": {
+        "provider": "ollama", "model_id": "qwen3.6:27b",
+        "display": "Qwen3.6 27B, thinking on (Alibaba, local)", "origin_country": "China",
+        "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
+        "request_overrides": {"think": True}, "temperature": 0.0,
+        "num_ctx": 32768, "max_output_tokens": 32768, "hidden_reasoning": "on",
+        "max_concurrency": 4, "price_in": 0.0, "price_out": 0.0,
+    },
+    "swallow-70b": {
+        "provider": "ollama",
+        "model_id": "hf.co/mmnga/Llama-3.1-Swallow-70B-Instruct-v0.3-gguf:Q4_K_M",
+        "display": "Llama-3.1-Swallow 70B v0.3 (Tokyo Tech, Japanese, local)", "origin_country": "Japan",
+        "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
+        "request_overrides": {}, "temperature": 0.0,
+        "num_ctx": 16384, "max_output_tokens": 16384, "hidden_reasoning": "n/a",
+        "max_concurrency": 4, "price_in": 0.0, "price_out": 0.0,
+    },
+    "exaone3.5-32b": {
+        "provider": "ollama", "model_id": "exaone3.5:32b",
+        "display": "EXAONE 3.5 32B (LG AI Research, Korean, local)", "origin_country": "South Korea",
+        "api_key_env": "OLLAMA_API_KEY", "api_key_default": "ollama",
+        "base_url_env": "OLLAMA_BASE_URL", "base_url": "http://localhost:11434",
+        "request_overrides": {}, "temperature": 0.0,
+        "num_ctx": 16384, "max_output_tokens": 16384, "hidden_reasoning": "n/a",
+        "max_concurrency": 4, "price_in": 0.0, "price_out": 0.0,
+    },
     "ollama": {
-        "provider": "openai_compat",
+        "provider": "ollama",
         "model_id": "qwen3.5:9b",
         "model_id_env": "OLLAMA_MODEL",
         "display": "Ollama local (model from OLLAMA_MODEL)",
@@ -220,9 +446,11 @@ MODELS = {
         "api_key_env": "OLLAMA_API_KEY",
         "api_key_default": "ollama",
         "base_url_env": "OLLAMA_BASE_URL",
-        "base_url": "http://localhost:11434/v1",
-        "request_overrides": {"reasoning_effort": "none"},
-        "hidden_reasoning": "off",
+        "base_url": "http://localhost:11434",
+        "request_overrides": {},
+        "num_ctx": 16384,
+        "max_output_tokens": 16384,
+        "hidden_reasoning": "unknown",   # depends on the model behind OLLAMA_MODEL
         "price_in": 0.0, "price_out": 0.0,
     },
     # ── Local inference: pinned entries for one-shot multi-model runs ───
@@ -235,7 +463,7 @@ MODELS = {
         "provider": "openai_compat",
         "model_id": "qwen3.5:9b",
         "display": "Ollama local: qwen3.5:9b",
-        "origin_country": "local",
+        "origin_country": "China",   # Qwen (Alibaba); feeds the origin test
         "api_key_env": "OLLAMA_API_KEY",
         "api_key_default": "ollama",
         "base_url_env": "OLLAMA_BASE_URL",
@@ -248,7 +476,7 @@ MODELS = {
         "provider": "openai_compat",
         "model_id": "qwen3.5:35b",
         "display": "Ollama local: qwen3.5:35b",
-        "origin_country": "local",
+        "origin_country": "China",   # Qwen (Alibaba); feeds the origin test
         "api_key_env": "OLLAMA_API_KEY",
         "api_key_default": "ollama",
         "base_url_env": "OLLAMA_BASE_URL",
@@ -261,7 +489,7 @@ MODELS = {
         "provider": "openai_compat",
         "model_id": "qwen3.6:35b",
         "display": "Ollama local: qwen3.6:35b",
-        "origin_country": "local",
+        "origin_country": "China",   # Qwen (Alibaba); feeds the origin test
         "api_key_env": "OLLAMA_API_KEY",
         "api_key_default": "ollama",
         "base_url_env": "OLLAMA_BASE_URL",
@@ -274,7 +502,7 @@ MODELS = {
         "provider": "openai_compat",
         "model_id": "qwen3.8:27b",
         "display": "Ollama local: qwen3.8:27b",
-        "origin_country": "local",
+        "origin_country": "China",   # Qwen (Alibaba); feeds the origin test
         "api_key_env": "OLLAMA_API_KEY",
         "api_key_default": "ollama",
         "base_url_env": "OLLAMA_BASE_URL",
@@ -366,6 +594,20 @@ DEFAULT_MODELS = [
 # `script` is used by the compliance heuristic in analyze.py: the dominant
 # Unicode script the reasoning should be written in.  Latin-script languages
 # cannot be told apart cheaply, so they share "latin".
+# Prompt wording version, selectable with `run_experiment.py --prompt-version`
+# and stored on every result row so runs under different prompts are never
+# pooled silently.  The wording itself lives in run_experiment.build_prompts.
+#   1 – original (all runs so far): language instructions end with "Your final
+#       answer must still be in English."; the examples note says only "follow
+#       the reasoning instruction above".  GPT-5.6 (Luna/Sol/Terra) obeys that
+#       English sentence instead of the language instruction and answers with
+#       the bare label; GLM-5.3 and GPT-4.1 comply fine.
+#   2 – that sentence removed (the ANSWER-line rule already fixes the label
+#       language); CoT conditions add "do NOT answer with the label alone".
+#       Verified to make GPT-5.6 reason in the requested language.
+DEFAULT_PROMPT_VERSION = 1
+PROMPT_VERSIONS = (1, 2)
+
 CONDITIONS = {
     # ── Indo-European (4) ──────────────────────────────────────────────────
     "english": {
@@ -382,7 +624,6 @@ CONDITIONS = {
         "instruction": (
             "Denke Schritt für Schritt auf Deutsch über dieses Problem nach. "
             "Zeige deine vollständige Argumentation auf Deutsch, bevor du deine endgültige Antwort gibst. "
-            "Your final answer must still be in English."
         ),
     },
     "russian": {
@@ -391,7 +632,6 @@ CONDITIONS = {
         "instruction": (
             "Продумай эту задачу шаг за шагом на русском языке. "
             "Покажи полный ход рассуждений на русском, прежде чем дать окончательный ответ. "
-            "Your final answer must still be in English."
         ),
     },
     "hindi": {
@@ -400,7 +640,6 @@ CONDITIONS = {
         "instruction": (
             "इस समस्या पर हिंदी में चरणबद्ध तरीके से विचार करें। "
             "अपना पूरा तर्क हिंदी में दिखाएं, फिर अपना अंतिम उत्तर दें। "
-            "Your final answer must still be in English."
         ),
     },
     # ── Sino-Tibetan (1) ──────────────────────────────────────────────────
@@ -409,7 +648,6 @@ CONDITIONS = {
         "script": "han",
         "instruction": (
             "请用中文逐步思考这个问题。用中文展示你的完整推理过程，然后给出最终答案。"
-            "Your final answer must still be in English."
         ),
     },
     # ── Afroasiatic (2) ───────────────────────────────────────────────────
@@ -419,7 +657,6 @@ CONDITIONS = {
         "instruction": (
             "فكّر في هذه المسألة خطوة بخطوة باللغة العربية. "
             "اعرض استدلالك الكامل بالعربية قبل تقديم إجابتك النهائية. "
-            "Your final answer must still be in English."
         ),
     },
     "hebrew": {
@@ -428,7 +665,6 @@ CONDITIONS = {
         "instruction": (
             "חשוב על הבעיה הזו צעד אחר צעד בעברית. "
             "הצג את ההיגיון המלא שלך בעברית לפני שתיתן את תשובתך הסופית. "
-            "Your final answer must still be in English."
         ),
     },
     # ── Japonic (1) ───────────────────────────────────────────────────────
@@ -438,7 +674,6 @@ CONDITIONS = {
         "instruction": (
             "この問題について日本語でステップバイステップで考えてください。"
             "日本語で完全な推論を示してから、最終的な回答を出してください。"
-            "Your final answer must still be in English."
         ),
     },
     # ── Koreanic (1) ──────────────────────────────────────────────────────
@@ -448,7 +683,6 @@ CONDITIONS = {
         "instruction": (
             "이 문제에 대해 한국어로 단계별로 생각해 주세요. "
             "한국어로 완전한 추론을 보여준 다음 최종 답변을 제시하세요. "
-            "Your final answer must still be in English."
         ),
     },
     # ── Turkic (1) ────────────────────────────────────────────────────────
@@ -458,7 +692,6 @@ CONDITIONS = {
         "instruction": (
             "Bu problemi Türkçe olarak adım adım düşünün. "
             "Son cevabınızı vermeden önce tam akıl yürütmenizi Türkçe gösterin. "
-            "Your final answer must still be in English."
         ),
     },
     # ── Uralic (2) ────────────────────────────────────────────────────────
@@ -468,7 +701,6 @@ CONDITIONS = {
         "instruction": (
             "Mieti tätä ongelmaa vaihe vaiheelta suomeksi. "
             "Näytä koko päättelysi suomeksi ennen lopullista vastaustasi. "
-            "Your final answer must still be in English."
         ),
     },
     "hungarian": {
@@ -477,7 +709,6 @@ CONDITIONS = {
         "instruction": (
             "Gondold végig ezt a problémát lépésről lépésre magyarul. "
             "Mutasd be a teljes érvelésedet magyarul, mielőtt megadod a végső válaszodat. "
-            "Your final answer must still be in English."
         ),
     },
     # ── Austronesian (1) ──────────────────────────────────────────────────
@@ -487,7 +718,6 @@ CONDITIONS = {
         "instruction": (
             "Pikirkan masalah ini langkah demi langkah dalam bahasa Indonesia. "
             "Tunjukkan penalaran lengkap Anda dalam bahasa Indonesia sebelum memberikan jawaban akhir. "
-            "Your final answer must still be in English."
         ),
     },
     # ── Austroasiatic (1) ─────────────────────────────────────────────────
@@ -497,7 +727,6 @@ CONDITIONS = {
         "instruction": (
             "Hãy suy nghĩ từng bước về vấn đề này bằng tiếng Việt. "
             "Trình bày toàn bộ lập luận bằng tiếng Việt trước khi đưa ra câu trả lời cuối cùng. "
-            "Your final answer must still be in English."
         ),
     },
     # ── Abstract representations (3) ─────────────────────────────────────
@@ -535,6 +764,58 @@ CONDITIONS = {
             "Only your final answer should be in English."
         ),
     },
+    # ── Constructed language ──────────────────────────────────────────────
+    # Ithkuil (John Quijada) is engineered for maximal precision and minimal
+    # ambiguity: the extreme of the "precise notation helps" hypothesis.  No
+    # model has meaningful Ithkuil fluency, so this also tests whether the
+    # *attempt* at a precision-optimised language helps or hurts.  Written in
+    # its Latin romanisation, so script compliance is not measurable (like the
+    # abstract notations); instruction in English because an Ithkuil
+    # instruction would not be understood.
+    "ithkuil": {
+        "family": "Constructed",
+        "script": None,
+        "instruction": (
+            "Think through this problem step by step in Ithkuil, the constructed language "
+            "designed by John Quijada for maximal precision and minimal ambiguity. "
+            "Write your full reasoning in Ithkuil (Latin romanisation) before giving your "
+            "final answer. Do NOT write your intermediate reasoning in English or any other "
+            "natural language. Only your final answer should be in English."
+        ),
+    },
+    # Toki Pona is Ithkuil's diametric opposite: ~130 words, no inflection,
+    # deliberately vague, and models know it well.  Lojban and Esperanto
+    # separate the two things Ithkuil confounds (maximal precision vs the model
+    # simply lacking fluency): Lojban is precise *and* reasonably known;
+    # Esperanto is regular, natural-like and very well known.
+    "toki_pona": {
+        "family": "Constructed",
+        "script": None,
+        "instruction": (
+            "Think through this problem step by step in Toki Pona, the minimalist constructed "
+            "language of about 130 words. Write your full reasoning in Toki Pona before giving "
+            "your final answer. Do NOT write your intermediate reasoning in English or any other "
+            "natural language. Only your final answer should be in English."
+        ),
+    },
+    "lojban": {
+        "family": "Constructed",
+        "script": None,
+        "instruction": (
+            "Think through this problem step by step in Lojban, the logical constructed language "
+            "with an unambiguous grammar. Write your full reasoning in Lojban before giving your "
+            "final answer. Do NOT write your intermediate reasoning in English or any other "
+            "natural language. Only your final answer should be in English."
+        ),
+    },
+    "esperanto": {
+        "family": "Constructed",
+        "script": None,
+        "instruction": (
+            "Pripensu ĉi tiun problemon paŝon post paŝo en Esperanto. Montru vian tutan rezonadon "
+            "en Esperanto antaŭ ol doni vian finan respondon. Only your final answer should be in English."
+        ),
+    },
     # ── Wildcard ──────────────────────────────────────────────────────────
     "wildcard": {
         "family": "Wildcard",
@@ -549,8 +830,32 @@ CONDITIONS = {
             "Only your final answer should be in English."
         ),
     },
+    # Mandatory mixing, as opposed to wildcard's permission; the instruction is itself
+    # written in the mixed register it demands and states the rationale (the union of
+    # all vocabularies is the broadest expressive space).
+    "polyglot": {
+        "family": "Wildcard",
+        "script": None,
+        "instruction": (
+            "Denke diesen Fall durch en mezclando todos los idiomas 和所有记法 that you know — "
+            "это не разрешение, а требование (non licet sed oportet). "
+            "Pourquoi: chaque langue 都有 its own Begriffe, die genau eine Nuance treffen that no other "
+            "tongue captures as precisely — Deutsch für zusammengesetzte Rechtsbegriffe, Latina pro "
+            "terminis iuris, 中文 for 简洁的判断, 日本語で微妙なニュアンス, русский для точных оттенков "
+            "действия, العربية للجذور الدلالية, logic symbols (∀, ∃, →, ¬, ∧) für jede Bedingung, code "
+            "pour toute procédure. La unión de todos los vocabularios es el espacio expresivo más amplio "
+            "posible: 所以 for each minute piece of information, wähle das Wort, la structure 或符号 that "
+            "expresses exactly that piece le plus précisément y más compactamente, и сразу переключайся "
+            "for the next piece. "
+            "Regeln: (1) ninguna frase entera in a single language — 每个句子 must mix mindestens zwei "
+            "languages or notations; (2) mische auch die Grammatiken, not only the words; "
+            "(3) ignore human readability, Konsistenz и стиль 完全 — optimiere nur for Genauigkeit des "
+            "Denkens; (4) no traduzcas nor explain your switches."
+        ),
+    },
     # ── Control ───────────────────────────────────────────────────────────
     "no_cot": {
+        "cot": False,   # the system prompt must not demand written reasoning here
         "family": "Control",
         "script": None,
         "instruction": (
@@ -572,7 +877,8 @@ PILOT_CONDITIONS = [
 # Only closed-label classification tasks are included, because the scorer is
 # exact-match on a label.  `labels` is the closed label set (verified against
 # the LegalBench task prompts); the answer normaliser maps model output onto
-# it.  Test-set sizes are approximate and come from the LegalBench paper.
+# it.  `test_size` is the size of the HuggingFace test split, verified on
+# download 2026-09-04 (the runner caps each task at MAX_TASKS_PER_BENCHMARK).
 #
 # Removed from the original list:
 #   * rule_qa – open-ended free-text answers; exact match cannot score it.
@@ -582,37 +888,37 @@ PILOT_CONDITIONS = [
 LEGALBENCH_TASKS = {
     "hearsay": {
         "labels": ["Yes", "No"],
-        "approx_test_size": 94,
+        "test_size": 94,
         "area": "evidence",
     },
     "personal_jurisdiction": {
         "labels": ["Yes", "No"],
-        "approx_test_size": 50,
+        "test_size": 50,
         "area": "civil procedure",
     },
     "contract_nli_explicit_identification": {
         "labels": ["Yes", "No"],
-        "approx_test_size": 109,
+        "test_size": 109,
         "area": "contract NLI",
     },
     "contract_nli_inclusion_of_verbally_conveyed_information": {
         "labels": ["Yes", "No"],
-        "approx_test_size": 139,
+        "test_size": 139,
         "area": "contract NLI",
     },
     "proa": {
         "labels": ["Yes", "No"],
-        "approx_test_size": 95,
+        "test_size": 95,
         "area": "statutory interpretation",
     },
     "abercrombie": {
         "labels": ["generic", "descriptive", "suggestive", "arbitrary", "fanciful"],
-        "approx_test_size": 95,
+        "test_size": 95,
         "area": "trademark",
     },
     "supply_chain_disclosure_best_practice_verification": {
         "labels": ["Yes", "No"],
-        "approx_test_size": 379,
+        "test_size": 379,
         "area": "disclosure compliance",
     },
     "unfair_tos": {
@@ -621,12 +927,12 @@ LEGALBENCH_TASKS = {
             "Choice of law", "Limitation of liability", "Unilateral termination",
             "Contract by using", "Other",
         ],
-        "approx_test_size": 3584,
+        "test_size": 3584,
         "area": "consumer contracts",
     },
     "learned_hands_benefits": {
         "labels": ["Yes", "No"],
-        "approx_test_size": 66,
+        "test_size": 66,
         "area": "issue spotting",
     },
 }
@@ -637,7 +943,11 @@ LEGALBENCH_TASKS = {
 MAX_TASKS_PER_BENCHMARK = 200    # samples per LegalBench task (seeded random subset)
 SAMPLE_SEED = 20240901           # fixed seed so every model/condition sees the same subset
 NUM_RUNS = 3                     # repeat each cell N times; use --runs 1 for a cheap pass
-MAX_OUTPUT_TOKENS = 4096         # cap on visible reasoning + answer (hidden thinking, where
-                                 # it cannot be disabled, also counts against this)
+# No output cap: None omits the max_tokens field so the model stops when it
+# is done.  A cap would clip verbose scripts hardest and bias the very variable
+# under test, and how long a runaway runs is itself benchmark data.  Verified
+# the provider substitutes no small default.  Anthropic requires the field and
+# falls back to providers.REQUIRED_MAX_TOKENS_FALLBACK.
+MAX_OUTPUT_TOKENS = None
 TEMPERATURE = 0.0                # deterministic where the provider allows it
 RESULTS_DIR = "results"

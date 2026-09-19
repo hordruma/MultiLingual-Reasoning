@@ -23,6 +23,8 @@ in `LLMResponse.reasoning`, never merged into `content`.
 """
 
 import asyncio
+import collections
+import json
 import os
 import random
 import re
@@ -45,7 +47,19 @@ class LLMResponse:
     truncated: bool = False     # True when the output hit the token cap
     reasoning: str = ""         # hidden reasoning returned by the provider, if any
     reasoning_promoted: bool = False  # content was empty; reasoning text used as the answer
+    reasoning_tokens: int = 0   # hidden-reasoning token count reported in usage (OpenAI-style)
     raw: Optional[dict] = None  # provider-specific payload for debugging
+
+
+
+def _usage_reasoning_tokens(usage: dict) -> int:
+    """OpenAI-style usage reports hidden reasoning only as a token count."""
+    details = (usage or {}).get("completion_tokens_details") or {}
+    return int(details.get("reasoning_tokens") or 0)
+
+# Anthropic's Messages API requires max_tokens, so an uncapped run needs a
+# concrete number there. Well above any observed completion length.
+REQUIRED_MAX_TOKENS_FALLBACK = 32000
 
 
 class ProviderError(Exception):
@@ -61,7 +75,19 @@ class ConfigError(Exception):
 MAX_RETRIES = 4
 RETRY_BACKOFF = [2, 5, 15, 30]          # seconds, plus jitter
 RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504, 529}
-TIMEOUT_SECONDS = 300                   # local models can be slow
+# Streaming makes the read timeout a *gap between chunks*, so a generation may
+# run arbitrarily long (no output cap) while a stalled connection is caught in
+# ~2 min instead of blocking a concurrency slot for the whole call.
+CONNECT_TIMEOUT = 30.0
+READ_TIMEOUT = 120.0          # max silence between streamed chunks
+TOTAL_TIMEOUT = 3600.0        # httpx pool/default; NOT a whole-request deadline
+# There is deliberately NO wall-clock cut on a streamed generation. How long a
+# model runs before it stops is benchmark data, not a fault: 9% of this model's
+# degenerate loops run past 40 minutes, reaching 139k tokens and 55 minutes, and
+# cutting them would silently truncate that distribution. READ_TIMEOUT already
+# kills a genuinely stalled connection (silence, not output), and runaways do
+# terminate on their own at the model's ceiling, so nothing here is unbounded.
+TIMEOUT_SECONDS = TOTAL_TIMEOUT
 
 _client: Optional[httpx.AsyncClient] = None
 
@@ -70,7 +96,8 @@ def _get_client() -> httpx.AsyncClient:
     """One shared connection pool for the whole run."""
     global _client
     if _client is None or _client.is_closed:
-        _client = httpx.AsyncClient(timeout=TIMEOUT_SECONDS)
+        _client = httpx.AsyncClient(timeout=httpx.Timeout(
+            TOTAL_TIMEOUT, connect=CONNECT_TIMEOUT, read=READ_TIMEOUT, write=CONNECT_TIMEOUT))
     return _client
 
 
@@ -103,12 +130,20 @@ def _retry_after(exc: Exception) -> Optional[float]:
 CONNECT_RETRIES = 2                     # unreachable host: one quick retry, then give up
 
 
-async def _retry(coro_fn, *args, **kwargs):
-    """Retry on transient failures only. 4xx auth/validation errors fail fast."""
+async def _retry(coro_fn, *args, _limiter: "Optional[RateLimiter]" = None, **kwargs):
+    """
+    Retry on transient failures only. 4xx auth/validation errors fail fast.
+
+    The rate limiter is acquired before EVERY attempt, not once per call:
+    a retry is another request against the provider's quota, so limiting only
+    the first attempt lets a burst of retries blow straight through the cap.
+    """
     last_err: Optional[Exception] = None
     max_attempts = MAX_RETRIES
     for attempt in range(MAX_RETRIES):
         try:
+            if _limiter is not None:
+                await _limiter.acquire()
             return await coro_fn(*args, **kwargs)
         except Exception as e:  # noqa: BLE001 – we classify below
             last_err = e
@@ -132,6 +167,48 @@ def _describe(exc: Optional[Exception]) -> str:
     return f"{type(exc).__name__}: {exc}"
 
 
+# ── Rate limiting ───────────────────────────────────────────────────────
+# Free tiers cap requests per minute (TokenRouter's free GLM-5.3 allows 8/min).
+# Without a limiter the runner burns its retry budget on 429s, so a model may
+# declare `requests_per_minute` in config and calls are spaced accordingly.
+
+class RateLimiter:
+    """Sliding-window limiter: at most `rpm` acquisitions in any 60 s."""
+
+    def __init__(self, rpm: int):
+        self.rpm = rpm
+        self._times: collections.deque = collections.deque()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self):
+        while True:
+            async with self._lock:
+                now = time.monotonic()
+                while self._times and now - self._times[0] >= 60.0:
+                    self._times.popleft()
+                if len(self._times) < self.rpm:
+                    self._times.append(now)
+                    return
+                wait = 60.0 - (now - self._times[0]) + 0.05
+            await asyncio.sleep(wait)
+
+
+_limiters: dict = {}
+
+
+def get_limiter(key: str, rpm: Optional[int]) -> Optional[RateLimiter]:
+    """One limiter per model key, so all its concurrent calls share the window."""
+    if not rpm:
+        return None
+    if key not in _limiters or _limiters[key].rpm != rpm:
+        _limiters[key] = RateLimiter(rpm)
+    return _limiters[key]
+
+
+def reset_limiters():
+    _limiters.clear()
+
+
 # ── Config resolution ───────────────────────────────────────────────────
 
 _PLACEHOLDER_KEYS = ("sk-ant-...", "sk-...", "AIza...", "...")
@@ -152,9 +229,25 @@ def resolve_model(model_cfg: dict) -> dict:
         # "temperature" key present with None means "omit the field"
         "temperature": model_cfg.get("temperature", "default"),
         "hidden_reasoning": model_cfg.get("hidden_reasoning", "unknown"),
+        "requests_per_minute": model_cfg.get("requests_per_minute"),
+        "stream": model_cfg.get("stream", True),
     }
 
+    for k in ("max_output_tokens", "num_ctx"):
+        if k in model_cfg:
+            resolved[k] = model_cfg[k]
+
     if provider == "mock":
+        return resolved
+    if provider == "ollama":
+        base_env = model_cfg.get("base_url_env")
+        base_url = (os.environ.get(base_env) if base_env else None) or model_cfg.get("base_url") \
+            or "http://localhost:11434"
+        resolved["base_url"] = base_url.rstrip("/").removesuffix("/v1")
+        resolved["api_key"] = model_cfg.get("api_key_default", "ollama")   # local: no key needed
+        model_id_env = model_cfg.get("model_id_env")
+        if model_id_env and os.environ.get(model_id_env):
+            resolved["model_id"] = os.environ[model_id_env]
         return resolved
 
     key_env = model_cfg.get("api_key_env")
@@ -213,16 +306,21 @@ def split_reasoning(content: str, reasoning: str = "") -> Tuple[str, str, bool]:
 # ── OpenAI-compatible chat completions ──────────────────────────────────
 
 def build_openai_body(resolved: dict, system: str, user: str,
-                      max_tokens: int, temperature: float) -> dict:
-    """Pure function so the request shape can be unit-tested."""
+                      max_tokens: Optional[int], temperature: float) -> dict:
+    """
+    Pure function so the request shape can be unit-tested.
+    `max_tokens=None` omits the field entirely: the model stops when it is
+    done, so nothing the study measures can be clipped by an arbitrary cap.
+    """
     body = {
         "model": resolved["model_id"],
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        resolved.get("max_tokens_param", "max_tokens"): max_tokens,
     }
+    if max_tokens is not None:
+        body[resolved.get("max_tokens_param", "max_tokens")] = max_tokens
     model_temp = resolved.get("temperature", "default")
     if model_temp == "default":
         body["temperature"] = temperature
@@ -232,8 +330,65 @@ def build_openai_body(resolved: dict, system: str, user: str,
     return body
 
 
+async def _call_openai_compat_stream(resolved: dict, system: str, user: str,
+                                     max_tokens, temperature: float) -> LLMResponse:
+    """
+    Streamed chat completion. Preferred because the read timeout then applies
+    between chunks: an uncapped generation can take as long as it needs, while
+    a stalled gateway is caught in seconds instead of holding a concurrency
+    slot for the whole call (which collapsed throughput on a live run).
+    """
+    url = f"{resolved['base_url']}/chat/completions"
+    headers = {"Authorization": f"Bearer {resolved['api_key']}", "content-type": "application/json"}
+    body = build_openai_body(resolved, system, user, max_tokens, temperature)
+    body["stream"] = True
+    body.setdefault("stream_options", {"include_usage": True})
+
+    content_parts, reasoning_parts = [], []
+    finish, usage = "", {}
+    t0 = time.monotonic()
+    async with _get_client().stream("POST", url, headers=headers, json=body) as r:
+        if r.status_code >= 400:
+            await r.aread()          # load the body so the error message is usable
+            r.raise_for_status()
+        async for line in r.aiter_lines():
+            if not line or not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            try:
+                obj = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+            if obj.get("usage"):
+                usage = obj["usage"]
+            for ch in obj.get("choices", []) or []:
+                delta = ch.get("delta") or {}
+                if delta.get("content"):
+                    content_parts.append(delta["content"])
+                rc = delta.get("reasoning_content") or delta.get("reasoning")
+                if rc:
+                    reasoning_parts.append(rc)
+                if ch.get("finish_reason"):
+                    finish = ch["finish_reason"]
+    elapsed = (time.monotonic() - t0) * 1000
+    content, reasoning, promoted = split_reasoning("".join(content_parts), "".join(reasoning_parts))
+    return LLMResponse(
+        model_id=resolved["model_id"], content=content,
+        input_tokens=usage.get("prompt_tokens") or 0,
+        output_tokens=usage.get("completion_tokens") or 0,
+        latency_ms=elapsed, finish_reason=finish,
+        truncated=(finish == "length"), reasoning=reasoning,
+        reasoning_promoted=promoted, raw=None,
+        reasoning_tokens=_usage_reasoning_tokens(usage),
+    )
+
+
 async def _call_openai_compat(resolved: dict, system: str, user: str,
                               max_tokens: int, temperature: float) -> LLMResponse:
+    if resolved.get("stream", True):
+        return await _call_openai_compat_stream(resolved, system, user, max_tokens, temperature)
     url = f"{resolved['base_url']}/chat/completions"
     headers = {
         "Authorization": f"Bearer {resolved['api_key']}",
@@ -261,6 +416,7 @@ async def _call_openai_compat(resolved: dict, system: str, user: str,
         latency_ms=elapsed, finish_reason=finish,
         truncated=(finish == "length"), reasoning=reasoning,
         reasoning_promoted=promoted, raw=data,
+        reasoning_tokens=_usage_reasoning_tokens(usage),
     )
 
 
@@ -276,7 +432,8 @@ async def _call_anthropic(resolved: dict, system: str, user: str,
     }
     body = {
         "model": resolved["model_id"],
-        "max_tokens": max_tokens,
+        # Anthropic requires this field, so an uncapped run uses the fallback.
+        "max_tokens": REQUIRED_MAX_TOKENS_FALLBACK if max_tokens is None else max_tokens,
         "system": system,
         "messages": [{"role": "user", "content": user}],
     }
@@ -334,20 +491,89 @@ async def _call_mock(resolved: dict, system: str, user: str,
 
 # ── Dispatch ────────────────────────────────────────────────────────────
 
+# ── Ollama native API ───────────────────────────────────────────────────
+# Ollama's OpenAI-compatible endpoint ignores `think` (verified 2026-09-08:
+# `think: false` still produced 8–14k characters of hidden reasoning on
+# qwen3.5:9b) and cannot set num_ctx / num_predict, so local models go
+# through /api/chat, which honours all three and streams the hidden
+# reasoning in a separate `thinking` field.
+
+def build_ollama_body(resolved: dict, system: str, user: str, max_tokens, temperature: float) -> dict:
+    options = {"num_predict": -1 if max_tokens is None else int(max_tokens)}
+    model_temp = resolved.get("temperature", "default")
+    if model_temp == "default":
+        options["temperature"] = temperature
+    elif model_temp is not None:
+        options["temperature"] = model_temp
+    if resolved.get("num_ctx"):
+        options["num_ctx"] = int(resolved["num_ctx"])
+    body = {
+        "model": resolved["model_id"],
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        "stream": True,
+        "options": options,
+    }
+    overrides = dict(resolved.get("request_overrides") or {})
+    if "think" in overrides:        # only thinking-capable models accept the field
+        body["think"] = bool(overrides.pop("think"))
+    body.update(overrides)
+    return body
+
+
+async def _call_ollama(resolved: dict, system: str, user: str,
+                       max_tokens, temperature: float) -> LLMResponse:
+    url = f"{resolved['base_url']}/api/chat"
+    body = build_ollama_body(resolved, system, user, max_tokens, temperature)
+    content_parts, thinking_parts = [], []
+    done_reason, in_tok, out_tok = "", 0, 0
+    t0 = time.monotonic()
+    async with _get_client().stream("POST", url, json=body) as r:
+        if r.status_code >= 400:
+            await r.aread()
+            r.raise_for_status()
+        async for line in r.aiter_lines():
+            if not line.strip():
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            msg = obj.get("message") or {}
+            if msg.get("content"):
+                content_parts.append(msg["content"])
+            if msg.get("thinking"):
+                thinking_parts.append(msg["thinking"])
+            if obj.get("done"):
+                done_reason = obj.get("done_reason") or "stop"
+                in_tok = obj.get("prompt_eval_count") or 0
+                out_tok = obj.get("eval_count") or 0
+    elapsed = (time.monotonic() - t0) * 1000
+    content, reasoning, promoted = split_reasoning("".join(content_parts), "".join(thinking_parts))
+    return LLMResponse(
+        model_id=resolved["model_id"], content=content,
+        input_tokens=in_tok, output_tokens=out_tok,
+        latency_ms=elapsed, finish_reason=done_reason,
+        truncated=(done_reason == "length"), reasoning=reasoning,
+        reasoning_promoted=promoted, raw=None,
+    )
+
+
 PROVIDER_MAP = {
     "anthropic":     _call_anthropic,
     "openai_compat": _call_openai_compat,
+    "ollama":        _call_ollama,
     "mock":          _call_mock,
 }
 
 
 async def call_model(resolved: dict, system: str, user: str,
-                     max_tokens: int = 4096, temperature: float = 0.0) -> LLMResponse:
+                     max_tokens: Optional[int] = None, temperature: float = 0.0) -> LLMResponse:
     """Unified entry point – dispatches to the right provider with retries."""
     fn = PROVIDER_MAP.get(resolved["provider"])
     if fn is None:
         raise ValueError(f"Unknown provider: {resolved['provider']}")
-    return await _retry(fn, resolved, system, user, max_tokens, temperature)
+    limiter = get_limiter(resolved["model_id"], resolved.get("requests_per_minute"))
+    return await _retry(fn, resolved, system, user, max_tokens, temperature, _limiter=limiter)
 
 
 async def smoke_test(resolved: dict) -> LLMResponse:

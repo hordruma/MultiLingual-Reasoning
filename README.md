@@ -4,10 +4,11 @@ Does the language a model reasons in change its accuracy on legal
 classification tasks? This repo runs a factorial of reasoning-language
 conditions × models × LegalBench tasks and analyses the results.
 
-State of the project: **prepared, not yet run**. The code has been audited
-and reworked (see [ASSESSMENT.md](ASSESSMENT.md)), tested offline, and is
-set up to run against six cheap cloud models or a local model. No real
-results exist yet.
+State of the project: **audited, and validated against a live API**. The code
+was reworked (see [ASSESSMENT.md](ASSESSMENT.md)) and a first real run
+(GLM-5.3 via TokenRouter, 58 samples, zero errors) confirmed the data
+download, scoring, resume, analysis and notebook all work end to end. No
+full-scale results exist yet.
 
 ## Design
 
@@ -18,7 +19,7 @@ results exist yet.
 | Tasks | 9 closed-label LegalBench tasks (7 Yes/No, one 5-class, one 9-class) |
 | Samples | up to 200 per task, seeded random subset, identical across cells |
 | Runs | `--runs N` (config default 3; use 1 for a first pass) |
-| Decoding | temperature 0 where the API allows it, 4096 output tokens, hidden "thinking" off where the API allows it |
+| Decoding | temperature 0 where the API allows it, **no output cap** (models run to natural stop), hidden "thinking" off where the API allows it |
 
 ### Conditions
 
@@ -43,6 +44,7 @@ Every condition asks for the final answer in English on a line of the form
 | Key | Model id | Route | Env var | Thinking | $/1M in / out |
 |---|---|---|---|---|---|
 | gpt-5.6-luna | gpt-5.6-luna | OpenAI | `OPENAI_API_KEY` | off (`reasoning_effort: none`) | 0.20 / 1.20 |
+| gpt-5.6-luna-think | gpt-5.6-luna | OpenAI | `OPENAI_API_KEY` | on (`reasoning_effort: low`) — paired counterpart for the thinking-on/off test | 0.20 / 1.20 |
 | gemini-3.1-flash-lite | gemini-3.1-flash-lite | Google OpenAI-compatible layer | `GEMINI_API_KEY` | lowest setting only | 0.25 / 1.50 |
 | deepseek-v4-flash | deepseek-v4-flash | DeepSeek | `DEEPSEEK_API_KEY` | off | 0.14 / 0.28 |
 | qwen3.7-flash | qwen3.7-flash | Alibaba DashScope (intl) | `QWEN_API_KEY` | off | 0.03 / 0.13 |
@@ -57,6 +59,13 @@ thinking cannot be disabled, so its hidden reasoning is recorded),
 For any aggregator, `python run_experiment.py --remote-models <key>` lists the
 model ids your key can see.
 
+Free tiers carry throughput limits, not just price limits. A model may declare
+`requests_per_minute` and `max_concurrency` in `config.py`; the runner spaces
+its calls and clamps `--concurrency` accordingly. TokenRouter's free GLM-5.3
+is measured at 8 requests/minute and 2 concurrent, which is about **41 hours**
+for one model across the full 19-condition matrix — a pilot budget, not a
+full-run budget.
+
 Prices are from public price lists in early September 2026 and only feed
 `--estimate`; check them before a paid run. Model ids are verified by
 `--smoke-test`, which also reports whether a provider returned hidden
@@ -69,6 +78,12 @@ requested language. Thinking is therefore switched off wherever the API
 allows it. Where it cannot be (GLM-5.3 Flash; Gemini 3.1 can only be turned
 down), the hidden reasoning is stored per sample and its rate is reported so
 those models can be analysed separately or excluded.
+
+This is not hypothetical. In the live GLM-5.3 pilot **100 % of samples
+returned hidden reasoning**, and in the mandarin condition the visible
+reasoning was 78 % Chinese while the hidden channel was 13 % — the model
+thought in English and wrote up in Chinese. For such models the `no_cot`
+control is also invalid: it still reasons, just invisibly.
 
 ### Local models
 
@@ -88,7 +103,7 @@ lenient answer mapping, so watch the `no-mark` and `off-lbl` columns.
 
 ### Tasks
 
-| Task | Labels | ~test size |
+| Task | Labels | test size |
 |---|---|---|
 | hearsay | Yes/No | 94 |
 | personal_jurisdiction | Yes/No | 50 |
@@ -103,15 +118,16 @@ lenient answer mapping, so watch the `no-mark` and `off-lbl` columns.
 Each task is presented with its official LegalBench `base_prompt.txt`
 (definition + few-shot examples) and the allowed label list. Only the
 `text` field is shown to the model; metadata columns that leak the answer
-are excluded. Test sizes are from the LegalBench paper and approximate.
+are excluded. Test sizes are the HuggingFace test-split sizes, verified on download.
 
 ## Setup
 
 ```bash
 python -m venv .venv && source .venv/bin/activate   # or --break-system-packages
 pip install -r requirements.txt
+# no pip on the machine? uv works: uv venv .venv && VIRTUAL_ENV=.venv uv pip install -r requirements.txt
 cp .env.template .env      # fill in the keys for the models you will use
-python -m pytest -q        # 38 offline tests, no network needed
+python -m pytest -q        # 56 offline tests, no network needed
 ```
 
 Data comes from two places on first use and is cached under `data/`:
@@ -121,6 +137,9 @@ If the hub download fails, the loader prints the exact file to download by
 hand and where to put it.
 
 ## Running
+
+Local language-native models (Ollama) have their own runbook: see `HANDOFF_LOCAL.md`
+and `run_local_native.sh`.
 
 ```bash
 python run_experiment.py --list                     # models, thinking policy, env vars, tasks
@@ -162,16 +181,24 @@ Recommended order for a real run:
 
 ```bash
 python analyze.py                 # report + CSVs from results/*.jsonl
+python analyze.py --models tokenrouter --out-dir results/report_glm   # one model set, CSVs kept apart
 jupyter lab legalbench_analysis.ipynb
 ```
 
-The report prints, in order: majority-class baseline per task, condition /
-model / family rankings, a compliance table per model × condition (share of
-letters in the expected script, missing `ANSWER:` marker, prediction outside
-the label set, API errors, truncation, hidden reasoning returned), exact
-McNemar paired tests of wildcard / no_cot / mandarin / pseudocode against
-English on identical samples, a within-model origin-advantage check, and
-token use.
+The report prints, in order: majority-class baseline per task; condition /
+model / family rankings with accuracy both raw and excluding runaways; a
+compliance table per model × condition (share of letters in the expected
+script, missing `ANSWER:` marker, prediction outside the label set, API
+errors, runaways, hidden reasoning returned); an exact McNemar comparison of
+**every** condition against English on identical samples, raw and
+runaway-corrected, with a Bonferroni-corrected significance flag; a
+within-model origin-advantage check derived from each model's
+`origin_country`; runaway rate and length per condition; and token use.
+
+A **runaway** is a response that never terminated (`finish_reason: length`)
+and therefore contains no answer. Raw accuracy scores it as wrong; the
+runaway-excluded view asks how accurate the model was when it did answer.
+Nothing caps or cuts these generations — their length is part of the result.
 
 The notebook reads the same JSONL files. It stops if `results/` is empty; it
 does not generate placeholder data.
@@ -184,14 +211,16 @@ results/
 ├── <model>__<condition>__run<N>.jsonl   # one record per sample: full visible response, hidden reasoning if any
 ├── results_matrix.csv          # (model, condition, task, run) cells
 ├── condition_summary.csv
-└── compliance.csv
+├── compliance.csv
+├── paired_vs_english_excl_runaway.csv
+└── runaways.csv
 figures/                        # written by the notebook
 ```
 
 ## Cost
 
 Use `--estimate`; it builds the real prompts and multiplies by the prices in
-`config.py`. For orientation, the default six models × 19 conditions ×
+`config.py`. For orientation, the default six models × 24 conditions ×
 ~1,100 samples × 1 run is roughly 125k calls. Prompts are long (few-shot
 examples plus some multi-paragraph disclosures), so input tokens matter as
 much as output. At the September 2026 list prices above that is on the

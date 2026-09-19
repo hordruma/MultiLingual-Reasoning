@@ -2,8 +2,8 @@
 
 ## Project Overview
 Research project testing whether the language used for chain-of-thought
-reasoning affects LLM accuracy on legal classification tasks. 19 reasoning
-conditions (14 natural languages, 3 abstract notations, wildcard, no-CoT
+reasoning affects LLM accuracy on legal classification tasks. 24 reasoning
+conditions (14 natural languages, 3 abstract notations, 4 constructed languages, wildcard, mandatory-mixing polyglot, no-CoT
 control) × configurable models (default: 6 cheap cloud models, Sept 2026 lineup;
 local Ollama/LM Studio supported) × 9 closed-label LegalBench tasks. Audit history and known caveats are in
 ASSESSMENT.md; read it before changing scoring or prompts.
@@ -18,6 +18,8 @@ analyze.py         — Report + CSVs from per-sample JSONL; stats helpers used b
 legalbench_analysis.ipynb — Charts; reads results/*.jsonl via analyze.py; no synthetic data
 tests/test_pipeline.py    — Offline tests (pytest), no network or keys needed
 ASSESSMENT.md      — Audit findings, what was fixed, what remains unverified
+HANDOFF_LOCAL.md   — How to redo the language-native local-model portion on a bigger machine
+run_local_native.sh — Sequential Ollama runs of the local models (7 shared conditions, prompt v2)
 .env.template      — API key template (never commit .env)
 data/              — Cache of test.jsonl + base_prompt.txt per task (gitignored)
 results/           — Experiment outputs (gitignored)
@@ -28,7 +30,7 @@ figures/           — Notebook output (gitignored)
 ```bash
 pip install -r requirements.txt
 cp .env.template .env               # fill in keys for the models you will use
-python -m pytest -q                 # 38 offline tests
+python -m pytest -q                 # 56 offline tests
 python run_experiment.py --list
 python run_experiment.py --smoke-test
 python run_experiment.py --estimate --runs 1
@@ -37,7 +39,11 @@ python analyze.py
 ```
 
 ## Key Conventions
-- Temperature 0.0 where accepted (GPT-5.x omits it), 4096 max output tokens; `truncated` is recorded per sample.
+- Temperature 0.0 where accepted (GPT-5.x omits it). NO output cap: `MAX_OUTPUT_TOKENS = None`
+  omits max_tokens so the model stops naturally (a cap truncates verbose scripts hardest and
+  biases the variable under test). `truncated` is still recorded and reported per sample.
+- Free tiers throttle: models may set `requests_per_minute` (sliding-window limiter in
+  providers.py) and `max_concurrency` (clamps --concurrency for that model).
 - Hidden thinking is disabled per model via `request_overrides`; any hidden reasoning that
   still comes back is stored in `hidden_reasoning`, never merged into `full_response`.
 - Samples per task: seeded random subset (`SAMPLE_SEED`), same for every cell.
@@ -48,7 +54,10 @@ python analyze.py
 - Scoring: last `ANSWER:`-style line (also `Answer:`, `**ANSWER:**`, `ANSWER：`,
   `A:`), cleaned, mapped onto the task label set, exact match. Records
   `answer_marker_found`, `predicted_in_label_set`, `truncated`, `error`.
-- Accuracy in summaries counts errors as wrong; `accuracy_answered` excludes them.
+- Accuracy in summaries counts errors as wrong; `accuracy_answered` excludes them and
+  `accuracy_complete` also excludes runaways (non-terminating responses, `truncated=True`).
+- Nothing in analyze.py or the notebook hard-codes model keys or hypothesis verdicts: origin
+  hypotheses derive from `origin_country`, palettes from the data, findings from the tests.
 - Results are appended per sample; rerunning resumes and retries errored rows.
 - The `mock` model is a pipeline test double. Never report its numbers.
 
@@ -59,7 +68,9 @@ python analyze.py
 - `python run_experiment.py --dry-run` — matrix only
 - `python run_experiment.py --models m1,m2 --conditions c1,c2 --tasks t1 --runs 1 --max-samples 50`
 - `python run_experiment.py --models mock --runs 1` — offline check
-- `python analyze.py --results-dir results/` — report + CSVs
+- `python analyze.py --results-dir results/ [--models a,b] [--out-dir d]` — report + CSVs; a
+  thinking-on/off section appears when two MODELS entries share a `model_id` with
+  `hidden_reasoning` "off" and "on"
 - `jupyter lab legalbench_analysis.ipynb`
 
 ## Testing
