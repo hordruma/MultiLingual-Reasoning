@@ -63,7 +63,7 @@ Runaway rate and raw Δ vs English (raw counts a runaway as wrong):
 | DeepSeek V4 Flash | 3 %, −1.9 | 12 %, −11.7 | 57 %, −44.1 | 67 %, −53.1 |
 | Claude Haiku 4.5 | 0 %, −0.9 | 0 %, −12.4 (n=89) | 36 %, −33.3 (n=33) | – |
 | gpt-4.1-mini | 0 %, −3.6 | 84 %, −67.0 (n=109) | 86 %, −65.6 (n=90) | 98 %, −77.8 (n=90) |
-| GPT-5.6 Luna (off / on) | 0 %, −1.4 / +0.7 | 0 %, −3.0 / +0.7 | 0 %, +1.7 / −3.3 | 0 %, −5.7 / −2.2 |
+| GPT-5.6 Luna (off / on) | 0 %, −1.4 / +0.7 | 0 %, −3.0 / +0.7 | 0 %, +1.7 (n=232) / +0.2 | 0 %, −6.4 / −0.9 |
 
 - **The ordering Lojban ≥ Ithkuil > Toki Pona > Esperanto holds on every
   model that runs away at all.** It tracks how much of the language the model
@@ -88,9 +88,10 @@ Runaway rate and raw Δ vs English (raw counts a runaway as wrong):
   tokens of English on GLM, for no accuracy gain anywhere.
 - **GPT-5.6 Luna's zero runaways are non-compliance, not robustness.** With
   reasoning off it answers with the bare label on 20–42 % of conlang samples
-  and refuses 26 % of Ithkuil outright; with reasoning on, its hidden channel
-  is active on 100 % of samples and the visible Lojban is a write-up of a
-  decision already made.
+  and refuses 26 % of Ithkuil outright, and its uncapped Lojban run is −6.4
+  (p < 10⁻⁴); with reasoning on, its hidden channel is active on 100 % of
+  samples, the visible Lojban is a write-up of a decision already made, and
+  Ithkuil/Lojban are +0.2/−0.9 on 1,048 samples.
 - An Ithkuil IV parser (christian-oudard/ithkuil) cannot score fidelity: 84 %
   of the words in *English* reasoning parse as valid Ithkuil. Recorded as a
   negative result in `ithkuil_fidelity.py`.
@@ -103,9 +104,12 @@ Runaway rate and raw Δ vs English (raw counts a runaway as wrong):
 - **polyglot** (mixing *required* within every sentence; the instruction is
   itself written in nine languages and gives the rationale): DeepSeek
   complies, mixing English, German, French, Spanish, Chinese and logic
-  notation, and scores −3.5 (p = 0.005); Luna −1.1 (n.s.). Runaways stay at
-  the English rate. Prediction before the run was "equal to English, more
-  runaways"; the accuracy cost is the whole effect.
+  notation, and scores −3.5 (p = 0.005); gpt-4.1-mini complies best (mixed
+  script in 55 % of responses) and scores −10.9 (p < 10⁻⁴); Luna −1.1 and
+  Luna-think −0.1 (both n.s., and Luna-off mixes scripts in only 8 %).
+  Runaways stay at the English rate everywhere. Prediction before the run
+  was "equal to English, more runaways"; instead the cost is accuracy, in
+  proportion to how much the model actually complies.
 - The broadest possible vocabulary buys nothing because expressiveness was
   never the bottleneck: accuracy is flat across 20 languages and notations on
   every capable model. What the language changes is how far the model is
@@ -121,7 +125,8 @@ Runaway rate and raw Δ vs English (raw counts a runaway as wrong):
    Ithkuil) cause looping non-termination in 12–98 % of samples on models
    that don't refuse, at 6–66× the token cost; the answers that do come back
    are about as good as English.
-3. Forcing or allowing multilingual mixing is neutral to slightly harmful.
+3. Forcing or allowing multilingual mixing is never a gain: neutral on the
+   strong models, −3.5 on DeepSeek, −11 on gpt-4.1-mini.
 4. Skipping the chain of thought entirely costs at most ~2 points and on one
    model nothing at all; the language of that chain of thought is worth
    nothing on top.
@@ -130,8 +135,9 @@ Runaway rate and raw Δ vs English (raw counts a runaway as wrong):
 
 - Different models were run under different prompt versions (GLM v1, the
   rest v2). The conlang findings replicate across both.
-- Ithkuil/Lojban/Toki Pona on gpt-4.1-mini and Ithkuil on Haiku are capped
-  subsets (33–109 samples), because runaways bill the full output limit.
+- Ithkuil/Lojban/Toki Pona on gpt-4.1-mini, Ithkuil on Haiku and Ithkuil on
+  Luna-off are capped or partial subsets (33–232 samples), because runaways
+  bill the full output limit or credit ran out.
 - DeepSeek runaways stop at 8,192 tokens (server default), Haiku and
   gpt-4.1-mini at 32k; runaway *rates* are comparable across models,
   lengths are not.

@@ -687,9 +687,19 @@ the model off its most-practised production register costs a few points.
 One model; the same condition on the other models is cheap and queued for
 when credit allows.
 
-**Follow-up (2026-09-18):** polyglot on GPT-5.6 Luna: −1.1 vs English
-(p = 0.27, 1,037 pairs), no runaways; Luna-think, gpt-4.1-mini and the
-uncapped Luna Ithkuil/Lojban runs were still in progress at the time of
-writing (`results_prompt_v2/openai_finish.log`).
+**Follow-up (2026-09-18), OpenAI finish-up until the account ran dry
+(total OpenAI spend on the v2 grid $46, of which gpt-4.1-mini $31: its capped
+conlang runaways bill 32k tokens each):**
 
-**Cost:** Anthropic $74, OpenAI ≈ $20 of 36, DeepSeek ≈ $9.50 of 20.
+- polyglot, full 1,048 samples: Luna −1.1 (p = 0.27; non-Latin script in
+  only 8 % of responses, bare label 13 %), Luna-think −0.1 (p = 1.0; mixes
+  scripts in 40 %), gpt-4.1-mini **−10.9** (p < 10⁻⁴; complies best, mixed
+  script in 55 %, no runaways). The pattern matches the natural-language
+  result: the weak model pays for leaving English, the strong ones don't
+  and mostly don't leave.
+- Luna-think uncapped: Ithkuil +0.2, Lojban −0.9 on 1,048 samples, no
+  runaways (visible text is a write-up; hidden reasoning on 100 %).
+- Luna (off) uncapped Lojban: **−6.4** (p < 10⁻⁴, 1,048 pairs), no runaways;
+  Ithkuil stopped at 232 samples (+1.7, n.s.) when credit ran out.
+
+**Cost:** Anthropic $74, OpenAI $36 (all of it), DeepSeek ≈ $9.50 of 20.
