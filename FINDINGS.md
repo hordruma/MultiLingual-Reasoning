@@ -80,8 +80,13 @@ costs 1.4–2× English everywhere.
   difference in any condition (−2.1 … +2.2). The "reasoning-on advantage"
   seen under prompt v1 was entirely because reasoning-off Luna had not
   written any reasoning.
-- Training-origin hypothesis (Chinese models better in Mandarin): not found.
-  GLM's and DeepSeek's Mandarin deltas are no better than the US models'.
+- The Mandarin hypothesis, that every model reasons better in Mandarin
+  because of its token density, is not supported: Mandarin vs English on
+  terminated pairs is +0.6 and +0.9 on Luna (n.s.), −1.3 on Haiku (n.s.),
+  −1.4 on GLM (n.s.), −3.1 on DeepSeek (p = 0.003) and −7.0 on gpt-4.1-mini
+  (p < 10⁻⁴). The narrower training-origin version (Chinese-trained models
+  gain in Mandarin) is not supported either: GLM's and DeepSeek's Mandarin
+  deltas are no better than the US models'.
 - Even the no-reasoning control is within a few points of English: −2.2 /
   −2.0 on Luna off / on, −1.5 on gpt-4.1-mini, −1.2 on GLM (all n.s. after
   correction) and +3.6 on DeepSeek (p = 0.016, not significant after
