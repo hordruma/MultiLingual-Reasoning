@@ -23,6 +23,41 @@ own token limit. "Terminated Δ" drops runaways on either side, i.e. asks
   run under v1 only, because its free route (TokenRouter) was down when the
   v2 reruns were done.
 
+## Where this came from
+
+The experiments were prompted by 2025–2026 claims that changing the language
+an LLM works in makes it cheaper or better, and by the first tests of them:
+
+- **caveman** (github.com/JuliusBrussee/caveman, April 2026, ~107k stars):
+  terse "caveman" narration to save tokens. The README's "65 %" is unsourced;
+  the author's proxy benchmark shows 33 % fewer *input* tokens on tool output
+  (CI 15–49 %); JetBrains measured 8.5 % fewer output tokens with flat quality
+  on 86 SkillsBench tasks; Adobe's CAVEWOMAN (arXiv 2606.24083) finds
+  output-side terseness cuts realised cost 1.4–2.4× while compressing the
+  model's input is a net loss.
+- **Chinese reasoning is cheaper** (PastaPastaPasta/llm-chinese-english,
+  Aug 2025): Qwen3-30B thinking on MATH-500 at 97 % accuracy with 61 % of the
+  English chain-of-thought tokens. The "up to 40 %" coding claim traces to a
+  2024 YouTube short with no evidence.
+- **Classical Chinese (文言文) is cheaper still** (caveman issue #34, shipped
+  as `wenyan-*` modes): 80–90 % savings claimed on hand-picked examples;
+  never measured.
+- **Rebuttals.** Ren et al. (arXiv 2604.14210): on SWE-bench Lite, Chinese
+  costs 0.98–1.28× English and success drops 5–10 points on all three models
+  tested; Chinese is 1.96–2.72 characters per token vs 2.69–3.72 for English.
+  Tang (arXiv 2604.07192): Classical Chinese constraint headers saved 4.6 %
+  vs 25–30 % for compact English, because BPE splits the characters.
+  Petrov et al. (NeurIPS 2023): the same text is up to 15× longer in tokens
+  in some languages than others.
+
+Those claims are about tokens. This study asks whether the language changes
+the *answers*; wildcard and polyglot also test the stronger version of the
+idea, that a model reasons best when freed from any one language. On tokens,
+the data here agree with the rebuttals: Mandarin is never cheaper than
+English per answer on Haiku or gpt-4.1-mini and ties on DeepSeek; only
+Korean, Japanese and formal logic on DeepSeek beat English, by 13–20 %; Hindi
+costs 1.4–2× English everywhere.
+
 ## 1. For a capable model the language of visible reasoning does not matter
 
 | model | English | natural languages + notations vs English | significant after Bonferroni |
