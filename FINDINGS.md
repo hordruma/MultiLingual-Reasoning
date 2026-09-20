@@ -23,6 +23,41 @@ own token limit. "Terminated Δ" drops runaways on either side, i.e. asks
   run under v1 only, because its free route (TokenRouter) was down when the
   v2 reruns were done.
 
+## Where this came from
+
+The experiments were prompted by 2025–2026 claims that changing the language
+an LLM works in makes it cheaper or better, and by the first tests of them:
+
+- **caveman** (github.com/JuliusBrussee/caveman, April 2026, ~107k stars):
+  terse "caveman" narration to save tokens. The README's "65 %" is unsourced;
+  the author's proxy benchmark shows 33 % fewer *input* tokens on tool output
+  (CI 15–49 %); JetBrains measured 8.5 % fewer output tokens with flat quality
+  on 86 SkillsBench tasks; Adobe's CAVEWOMAN (arXiv 2606.24083) finds
+  output-side terseness cuts realised cost 1.4–2.4× while compressing the
+  model's input is a net loss.
+- **Chinese reasoning is cheaper** (PastaPastaPasta/llm-chinese-english,
+  Aug 2025): Qwen3-30B thinking on MATH-500 at 97 % accuracy with 61 % of the
+  English chain-of-thought tokens. The "up to 40 %" coding claim traces to a
+  2024 YouTube short with no evidence.
+- **Classical Chinese (文言文) is cheaper still** (caveman issue #34, shipped
+  as `wenyan-*` modes): 80–90 % savings claimed on hand-picked examples;
+  never measured.
+- **Rebuttals.** Ren et al. (arXiv 2604.14210): on SWE-bench Lite, Chinese
+  costs 0.98–1.28× English and success drops 5–10 points on all three models
+  tested; Chinese is 1.96–2.72 characters per token vs 2.69–3.72 for English.
+  Tang (arXiv 2604.07192): Classical Chinese constraint headers saved 4.6 %
+  vs 25–30 % for compact English, because BPE splits the characters.
+  Petrov et al. (NeurIPS 2023): the same text is up to 15× longer in tokens
+  in some languages than others.
+
+Those claims are about tokens. This study asks whether the language changes
+the *answers*; wildcard and polyglot also test the stronger version of the
+idea, that a model reasons best when freed from any one language. On tokens,
+the data here agree with the rebuttals: Mandarin is never cheaper than
+English per answer on Haiku or gpt-4.1-mini and ties on DeepSeek; only
+Korean, Japanese and formal logic on DeepSeek beat English, by 13–20 %; Hindi
+costs 1.4–2× English everywhere.
+
 ## 1. For a capable model the language of visible reasoning does not matter
 
 | model | English | natural languages + notations vs English | significant after Bonferroni |
@@ -45,8 +80,13 @@ own token limit. "Terminated Δ" drops runaways on either side, i.e. asks
   difference in any condition (−2.1 … +2.2). The "reasoning-on advantage"
   seen under prompt v1 was entirely because reasoning-off Luna had not
   written any reasoning.
-- Training-origin hypothesis (Chinese models better in Mandarin): not found.
-  GLM's and DeepSeek's Mandarin deltas are no better than the US models'.
+- The Mandarin hypothesis, that every model reasons better in Mandarin
+  because of its token density, is not supported: Mandarin vs English on
+  terminated pairs is +0.6 and +0.9 on Luna (n.s.), −1.3 on Haiku (n.s.),
+  −1.4 on GLM (n.s.), −3.1 on DeepSeek (p = 0.003) and −7.0 on gpt-4.1-mini
+  (p < 10⁻⁴). The narrower training-origin version (Chinese-trained models
+  gain in Mandarin) is not supported either: GLM's and DeepSeek's Mandarin
+  deltas are no better than the US models'.
 - Even the no-reasoning control is within a few points of English: −2.2 /
   −2.0 on Luna off / on, −1.5 on gpt-4.1-mini, −1.2 on GLM (all n.s. after
   correction) and +3.6 on DeepSeek (p = 0.016, not significant after
@@ -63,7 +103,7 @@ Runaway rate and raw Δ vs English (raw counts a runaway as wrong):
 | DeepSeek V4 Flash | 3 %, −1.9 | 12 %, −11.7 | 57 %, −44.1 | 67 %, −53.1 |
 | Claude Haiku 4.5 | 0 %, −0.9 | 0 %, −12.4 (n=89) | 36 %, −33.3 (n=33) | – |
 | gpt-4.1-mini | 0 %, −3.6 | 84 %, −67.0 (n=109) | 86 %, −65.6 (n=90) | 98 %, −77.8 (n=90) |
-| GPT-5.6 Luna (off / on) | 0 %, −1.4 / +0.7 | 0 %, −3.0 / +0.7 | 0 %, +1.7 / −3.3 | 0 %, −5.7 / −2.2 |
+| GPT-5.6 Luna (off / on) | 0 %, −1.4 / +0.7 | 0 %, −3.0 / +0.7 | 0 %, +1.7 (n=232) / +0.2 | 0 %, −6.4 / −0.9 |
 
 - **The ordering Lojban ≥ Ithkuil > Toki Pona > Esperanto holds on every
   model that runs away at all.** It tracks how much of the language the model
@@ -88,9 +128,10 @@ Runaway rate and raw Δ vs English (raw counts a runaway as wrong):
   tokens of English on GLM, for no accuracy gain anywhere.
 - **GPT-5.6 Luna's zero runaways are non-compliance, not robustness.** With
   reasoning off it answers with the bare label on 20–42 % of conlang samples
-  and refuses 26 % of Ithkuil outright; with reasoning on, its hidden channel
-  is active on 100 % of samples and the visible Lojban is a write-up of a
-  decision already made.
+  and refuses 26 % of Ithkuil outright, and its uncapped Lojban run is −6.4
+  (p < 10⁻⁴); with reasoning on, its hidden channel is active on 100 % of
+  samples, the visible Lojban is a write-up of a decision already made, and
+  Ithkuil/Lojban are +0.2/−0.9 on 1,048 samples.
 - An Ithkuil IV parser (christian-oudard/ithkuil) cannot score fidelity: 84 %
   of the words in *English* reasoning parse as valid Ithkuil. Recorded as a
   negative result in `ithkuil_fidelity.py`.
@@ -103,9 +144,12 @@ Runaway rate and raw Δ vs English (raw counts a runaway as wrong):
 - **polyglot** (mixing *required* within every sentence; the instruction is
   itself written in nine languages and gives the rationale): DeepSeek
   complies, mixing English, German, French, Spanish, Chinese and logic
-  notation, and scores −3.5 (p = 0.005); Luna −1.1 (n.s.). Runaways stay at
-  the English rate. Prediction before the run was "equal to English, more
-  runaways"; the accuracy cost is the whole effect.
+  notation, and scores −3.5 (p = 0.005); gpt-4.1-mini complies best (mixed
+  script in 55 % of responses) and scores −10.9 (p < 10⁻⁴); Luna −1.1 and
+  Luna-think −0.1 (both n.s., and Luna-off mixes scripts in only 8 %).
+  Runaways stay at the English rate everywhere. Prediction before the run
+  was "equal to English, more runaways"; instead the cost is accuracy, in
+  proportion to how much the model actually complies.
 - The broadest possible vocabulary buys nothing because expressiveness was
   never the bottleneck: accuracy is flat across 20 languages and notations on
   every capable model. What the language changes is how far the model is
@@ -121,7 +165,8 @@ Runaway rate and raw Δ vs English (raw counts a runaway as wrong):
    Ithkuil) cause looping non-termination in 12–98 % of samples on models
    that don't refuse, at 6–66× the token cost; the answers that do come back
    are about as good as English.
-3. Forcing or allowing multilingual mixing is neutral to slightly harmful.
+3. Forcing or allowing multilingual mixing is never a gain: neutral on the
+   strong models, −3.5 on DeepSeek, −11 on gpt-4.1-mini.
 4. Skipping the chain of thought entirely costs at most ~2 points and on one
    model nothing at all; the language of that chain of thought is worth
    nothing on top.
@@ -130,8 +175,9 @@ Runaway rate and raw Δ vs English (raw counts a runaway as wrong):
 
 - Different models were run under different prompt versions (GLM v1, the
   rest v2). The conlang findings replicate across both.
-- Ithkuil/Lojban/Toki Pona on gpt-4.1-mini and Ithkuil on Haiku are capped
-  subsets (33–109 samples), because runaways bill the full output limit.
+- Ithkuil/Lojban/Toki Pona on gpt-4.1-mini, Ithkuil on Haiku and Ithkuil on
+  Luna-off are capped or partial subsets (33–232 samples), because runaways
+  bill the full output limit or credit ran out.
 - DeepSeek runaways stop at 8,192 tokens (server default), Haiku and
   gpt-4.1-mini at 32k; runaway *rates* are comparable across models,
   lengths are not.
